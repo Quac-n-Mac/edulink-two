@@ -143,10 +143,12 @@ impl<T: Transport> Client<T> {
             "format": 2,
         });
         let result = self.transport.call(methods::LOGIN, params).await?;
-        let login: LoginData = serde_json::from_value(result).context("parse login")?;
+        let mut login: LoginData = serde_json::from_value(result).context("parse login")?;
         self.transport.set_token(&login.authtoken);
 
         // Handshake pair in parallel, then the surfaces in parallel.
+        // The real Login response has no identity: user + establishment
+        // come from LoginContext. Merge them into the login data.
         let (ctx, _status) = tokio::join!(
             self.transport.call(
                 methods::LOGIN_CONTEXT,
@@ -154,12 +156,22 @@ impl<T: Transport> Client<T> {
             ),
             self.transport.call(methods::STATUS, json!({"last_message": ""})),
         );
-        ctx.context("login context")?;
+        let ctx: LoginContextData =
+            serde_json::from_value(ctx.context("login context")?).context("parse login context")?;
+        if login.user.is_none() {
+            login.user = ctx.user;
+        }
+        if login.establishment.is_none() {
+            login.establishment = ctx.establishment;
+        }
+        if login.user.is_none() {
+            anyhow::bail!("login: server returned no user identity");
+        }
 
         let learner = learner_id
             .map(str::to_string)
             .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| login.user.id.to_string());
+            .unwrap_or_else(|| login.user.as_ref().unwrap().id.to_string());
         let prefetch = self.prefetch_all(&learner, date).await;
         Ok((login, prefetch))
     }
