@@ -34,7 +34,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.layer.rememberGraphicsLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.font.FontWeight
@@ -81,25 +81,27 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     val softAmbient = Color.Black.copy(alpha = 0.08f)
     val softSpot = Color.Black.copy(alpha = 0.10f)
 
-    // His 4-layer stack, far to near, each counter-shifting more than
-    // the last: background -> page content -> detail sheets -> bars.
+    // His revised layer feel (v0.5.7): the bars sit nearly STATIC so
+    // they never get hard to read, the page content carries the
+    // parallax, and detail sheets counter-shift (negative parallax)
+    // because they float above the bars. Background drifts slowest.
     val drift = Modifier.graphicsLayer {
-        scaleX = 1.25f; scaleY = 1.25f
-        rotationZ = tilt.x * 1.2f
-        translationY = -scrollPx * 0.18f + tilt.y * 12.dp.toPx()
-        translationX = tilt.x * 18.dp.toPx()
+        scaleX = 1.2f; scaleY = 1.2f
+        rotationZ = tilt.x * 0.8f
+        translationY = -scrollPx * 0.18f + tilt.y * 8.dp.toPx()
+        translationX = tilt.x * 12.dp.toPx()
     }
     val contentDrift = Modifier.graphicsLayer {
-        translationY = -tilt.y * 18.dp.toPx()
-        translationX = -tilt.x * 28.dp.toPx()
+        translationY = -tilt.y * 12.dp.toPx()
+        translationX = -tilt.x * 20.dp.toPx()
     }
     val sheetDrift = Modifier.graphicsLayer {
-        translationY = -tilt.y * 24.dp.toPx()
-        translationX = -tilt.x * 36.dp.toPx()
+        translationY = tilt.y * 10.dp.toPx()
+        translationX = tilt.x * 14.dp.toPx()
     }
     val nearDrift = Modifier.graphicsLayer {
-        translationY = -tilt.y * 32.dp.toPx()
-        translationX = -tilt.x * 48.dp.toPx()
+        translationY = -tilt.y * 3.dp.toPx()
+        translationX = -tilt.x * 4.dp.toPx()
     }
 
     // Liquid glass backdrop: the content zone (bg + pages, no bars) is
@@ -179,9 +181,11 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         }
         }
         NavigationBar(modifier = Modifier.then(nearDrift).shadow(barElev, ambientColor = softAmbient, spotColor = softSpot)) {
+            // The glass pill floats just above the (near-static) nav bar,
+            // so it keeps only a whisper of drift of its own.
             val pillDrift = Modifier.graphicsLayer {
-                translationY = -tilt.y * 40.dp.toPx()
-                translationX = -tilt.x * 60.dp.toPx()
+                translationY = -tilt.y * 4.dp.toPx()
+                translationX = -tilt.x * 6.dp.toPx()
             }
             GlassNavItem(ui.tab == Tab.HOMEWORK, { vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, "Homework", glassBackdrop, { contentTopPx }, pillDrift, Modifier.weight(1f))
             GlassNavItem(ui.tab == Tab.TIMETABLE, { vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, "Timetable", glassBackdrop, { contentTopPx }, pillDrift, Modifier.weight(1f))
@@ -1044,7 +1048,7 @@ private fun TeachersSection(ui: UiState) {
 /** Nav bar item whose selected state is a stained liquid-glass pill on
  * the nearest parallax layer (icon + label keep the stock look on top). */
 @Composable
-fun GlassNavItem(
+fun RowScope.GlassNavItem(
     selected: Boolean,
     onClick: () -> Unit,
     icon: @Composable () -> Unit,

@@ -34,6 +34,8 @@ fun rememberPerspective(): State<Offset> {
         var refRoll = 0f
         var sx = 0f
         var sy = 0f
+        var fp = 0f
+        var fr = 0f
         var primed = false
         val listener = object : SensorEventListener {
             override fun onSensorChanged(e: SensorEvent) {
@@ -41,17 +43,24 @@ fun rememberPerspective(): State<Offset> {
                 SensorManager.getOrientation(rot, ori)
                 val pitch = ori[1]
                 val roll = ori[2]
+                // Fast EMA tracks the current grip; the zero reference
+                // recalibrates to wherever the phone rests STEADY (small
+                // instantaneous deltas), so the centered state is always
+                // the real resting angle within a second or two of
+                // stillness. Active motion never decays: adaptation only
+                // runs while the phone is still.
+                fp = 0.3f * fp + 0.7f * pitch
+                fr = 0.3f * fr + 0.7f * roll
                 if (!primed) {
                     refPitch = pitch; refRoll = roll
+                    fp = pitch; fr = roll
                     primed = true
                     return
                 }
-                // Very slow reference adaptation (~15s) so the effect
-                // recentres around the current grip, but ONLY while the
-                // phone is near level - a held tilt must never decay away.
-                if (kotlin.math.abs(pitch - refPitch) < 0.05f && kotlin.math.abs(roll - refRoll) < 0.05f) {
-                    refPitch += (pitch - refPitch) * 0.0012f
-                    refRoll += (roll - refRoll) * 0.0012f
+                val steady = kotlin.math.abs(pitch - fp) < 0.012f && kotlin.math.abs(roll - fr) < 0.012f
+                if (steady) {
+                    refPitch += (fp - refPitch) * 0.03f
+                    refRoll += (fr - refRoll) * 0.03f
                 }
                 // Light smoothing (~150ms) keeps motion fluid, not jumpy.
                 val a = 0.55f
