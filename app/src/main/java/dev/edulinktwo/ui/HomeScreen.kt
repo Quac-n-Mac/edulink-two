@@ -177,7 +177,7 @@ fun HomeworkTab(ui: UiState, vm: AppViewModel, onDetail: (HomeworkDetail) -> Uni
     val today = LocalDate.now()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { Text("Current", style = MaterialTheme.typography.titleMedium) }
-        items(hw.homework.current) { h ->
+        items(hw.homework.current, key = { "cur-" + it.idString() + it.due_date }) { h ->
             val due = runCatching { LocalDate.parse(h.due_date.take(10)) }.getOrNull()
             val days = due?.toEpochDay()?.minus(today.toEpochDay())?.toInt()
             val rowColor = when {
@@ -224,7 +224,7 @@ fun HomeworkTab(ui: UiState, vm: AppViewModel, onDetail: (HomeworkDetail) -> Uni
                 }
             }
             if (showPast) {
-                items(hw.homework.past) { h ->
+                items(hw.homework.past, key = { "past-" + it.idString() + it.due_date }) { h ->
                     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))) {
                         Column(Modifier.padding(12.dp)) {
                             Text(h.activity)
@@ -255,7 +255,7 @@ fun TimetableTab(ui: UiState) {
                         color = if (day.date == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                     )
                 }
-                items(day.lessons) { l ->
+                items(day.lessons, key = { day.date + (it.start_time ?: "") + it.subjectName() }) { l ->
                     Card(Modifier.fillMaxWidth()) {
                         Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("${l.start_time ?: ""}\n${l.end_time ?: ""}", style = MaterialTheme.typography.labelSmall)
@@ -306,7 +306,7 @@ fun PointsTab(ui: UiState) {
             }
         }
         item { Text("Achievements", style = MaterialTheme.typography.titleMedium) }
-        items(a.achievement) { e ->
+        items(a.achievement, key = { "ach-" + it.date + (it.comments ?: "") }) { e ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp)) {
                     Text("+${e.points}  ${e.comments ?: ""}")
@@ -315,7 +315,7 @@ fun PointsTab(ui: UiState) {
             }
         }
         item { Text("Behaviour", style = MaterialTheme.typography.titleMedium) }
-        items(b.behaviour) { e ->
+        items(b.behaviour, key = { "beh-" + it.date + (it.comments ?: "") }) { e ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp)) {
                     Text("-${e.points}  ${e.comments ?: ""}")
