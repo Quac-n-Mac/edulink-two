@@ -49,7 +49,7 @@ jobs:
           echo "${{ secrets.SIGNING_KEYSTORE_B64 }}" | base64 -d > /tmp/keystore.p12 2>/dev/null || true
           [ -s /tmp/keystore.p12 ] || rm -f /tmp/keystore.p12
 
-      - name: Build APK (signed release if keystore present, else debug)
+      - name: Build APK (release; real keystore if secrets present, debug key otherwise)
         run: |
           chmod +x gradlew
           if [ -f /tmp/keystore.p12 ]; then
@@ -59,7 +59,7 @@ jobs:
               -Pandroid.injected.signing.key.alias="${{ secrets.SIGNING_KEY_ALIAS }}" \
               -Pandroid.injected.signing.key.password="${{ secrets.SIGNING_KEY_PASSWORD }}"
           else
-            ./gradlew :app:assembleDebug
+            ./gradlew :app:assembleRelease
           fi
 
       - name: Rename APK
