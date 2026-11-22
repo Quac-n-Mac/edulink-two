@@ -86,9 +86,9 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                         detailError = null
                         detailLoading = true
                         detail = null
-                        vm.homeworkDetail(id) { d, _ ->
+                        vm.homeworkDetail(id) { d, err ->
                             detailLoading = false
-                            if (d != null) detail = d else detailError = "could not load homework - check connection"
+                            if (d != null) detail = d else detailError = err ?: "could not load this homework"
                         }
                     }
                     Tab.TIMETABLE -> TimetableTab(ui)

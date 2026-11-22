@@ -7,6 +7,8 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -256,11 +258,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Detail fetch; second callback value is the REAL error when it fails, never a guess. */
     fun homeworkDetail(id: String, onDone: (HomeworkDetail?, String?) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             val raw = runCatching { RustBridge.nativeHwDetail(stateDir, cacheDir, id) }.getOrNull()
-            val (d, at) = decodeSurface<HomeworkDetail>(raw)
-            withContext(Dispatchers.Main) { onDone(d, at) }
+            val (d, _) = decodeSurface<HomeworkDetail>(raw)
+            val err = if (d == null) {
+                raw?.let {
+                    runCatching {
+                        json.parseToJsonElement(it).jsonObject["error"]?.jsonPrimitive?.content
+                    }.getOrNull()
+                } ?: lastDecodeError ?: "detail fetch failed (no response)"
+            } else null
+            withContext(Dispatchers.Main) { onDone(d, err) }
         }
     }
 

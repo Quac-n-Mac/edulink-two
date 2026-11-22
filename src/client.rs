@@ -228,6 +228,31 @@ impl<T: Transport> Client<T> {
                 json!({"homework_id": id, "source": source, "format": 2}),
             )
             .await?;
+        // The live API freely sends nulls and numbers where strings/vecs
+        // are expected; coerce before typed parsing so one odd field
+        // does not fail the whole detail fetch.
+        let mut v = v;
+        if let Some(hw) = v.get_mut("homework").and_then(|h| h.as_object_mut()) {
+            for key in ["activity", "subject", "description", "due_date", "available_date"] {
+                if let Some(val) = hw.get_mut(key) {
+                    let fixed = match &*val {
+                        Value::Null => Some(Value::String(String::new())),
+                        Value::Number(n) => Some(Value::String(n.to_string())),
+                        Value::Bool(b) => Some(Value::String(b.to_string())),
+                        _ => None,
+                    };
+                    if let Some(f) = fixed {
+                        *val = f;
+                    }
+                }
+            }
+            if matches!(hw.get("attachments"), Some(Value::Null)) {
+                hw.insert("attachments".to_string(), json!([]));
+            }
+            if matches!(hw.get("set_by"), Some(Value::Null)) {
+                hw.remove("set_by");
+            }
+        }
         serde_json::from_value(v).context("parse homework details")
     }
 

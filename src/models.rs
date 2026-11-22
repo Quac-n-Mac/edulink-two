@@ -210,7 +210,8 @@ pub struct HomeworkData {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HomeworkDetailInner {
-    pub id: Id,
+    #[serde(default)]
+    pub id: Option<Id>,
     #[serde(default)]
     pub activity: String,
     #[serde(default)]
