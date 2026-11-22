@@ -162,24 +162,25 @@ fun Modifier.liquidGlass(
     baseAlpha: Float = 0.55f,
     stainColor: Color = Color.Transparent,
     stain: Float = 0f,
-    scrollOffsetPx: () -> Float = { 0f },
     lightDir: () -> Offset = { Offset(-0.55f, -0.83f) },
-    fallbackColor: Color = Color(0x59FFFFFF),
-    useWindowPos: Boolean = false,
 ): Modifier {
-    if (Build.VERSION.SDK_INT < 33) {
-        // frosted fallback: translucency + rim highlight, no refraction
-        return this.drawBehind {
+    // Frosted fallback when there is no usable backdrop (old API or no
+    // capture yet): near-invisible wash + a faint rim, never a gray blob.
+    val fallback: Modifier.() -> Modifier = {
+        drawBehind {
             val rr = RoundRect(0f, 0f, size.width, size.height, CornerRadius(cornerRadius.toPx()))
             val path = Path().apply { addRoundRect(rr) }
-            clipPath(path) { drawRect(fallbackColor) }
+            clipPath(path) { drawRect(Color(0x10FFFFFF)) }
             drawRoundRect(
-                color = Color(0x66FFFFFF),
+                color = Color(0x2EFFFFFF),
                 size = size,
                 cornerRadius = CornerRadius(cornerRadius.toPx()),
                 style = Stroke(width = 1.5.dp.toPx())
             )
         }
+    }
+    if (Build.VERSION.SDK_INT < 33) {
+        return this.fallback()
     }
     var pos by mutableStateOf(Offset.Zero)
     val shader = RuntimeShader(GLASS_AGSL)
@@ -187,7 +188,7 @@ fun Modifier.liquidGlass(
         override fun createShader(size: Size): Shader = shader
     }
     return this
-        .onGloballyPositioned { pos = if (useWindowPos) it.positionInWindow() else it.positionInRoot() }
+        .onGloballyPositioned { pos = it.positionInRoot() }
         .drawBehind {
             val bmp = backdrop.bitmap ?: return@drawBehind
             shader.setInputBuffer(
@@ -197,7 +198,7 @@ fun Modifier.liquidGlass(
                 )
             )
             shader.setFloatUniform("resolution", size.width, size.height)
-            shader.setFloatUniform("surfacePos", pos.x, pos.y - scrollOffsetPx())
+            shader.setFloatUniform("surfacePos", pos.x, pos.y)
             shader.setFloatUniform("glassScale", backdrop.scale)
             shader.setFloatUniform("cornerRadius", cornerRadius.toPx())
             shader.setFloatUniform("edgeWidth", edgeWidth.toPx())

@@ -15,8 +15,10 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -42,6 +44,10 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.platform.LocalDensity
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import dev.edulinktwo.*
@@ -88,35 +94,77 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     // they never get hard to read, the page content carries the
     // parallax, and detail sheets counter-shift (negative parallax)
     // because they float above the bars. Background drifts slowest.
+    // Parallax at 50% per his v0.5.7 verdict. The bg scroll drift is
+    // clamped hard: an unbounded shift slid the light background away
+    // on long scrolls and exposed the navy root (his "growing blue bar").
     val drift = Modifier.graphicsLayer {
-        scaleX = 1.2f; scaleY = 1.2f
-        rotationZ = tilt.x * 0.8f
-        translationY = -scrollPx * 0.18f + tilt.y * 8.dp.toPx()
-        translationX = tilt.x * 12.dp.toPx()
+        scaleX = 1.1f; scaleY = 1.1f
+        rotationZ = tilt.x * 0.4f
+        translationY = -scrollPx.coerceIn(-220f, 220f) * 0.18f + tilt.y * 4.dp.toPx()
+        translationX = tilt.x * 6.dp.toPx()
     }
     val contentDrift = Modifier.graphicsLayer {
-        translationY = -tilt.y * 12.dp.toPx()
-        translationX = -tilt.x * 20.dp.toPx()
+        translationY = -tilt.y * 6.dp.toPx()
+        translationX = -tilt.x * 10.dp.toPx()
     }
     val sheetDrift = Modifier.graphicsLayer {
-        translationY = tilt.y * 10.dp.toPx()
-        translationX = tilt.x * 14.dp.toPx()
+        translationY = tilt.y * 5.dp.toPx()
+        translationX = tilt.x * 7.dp.toPx()
     }
     val nearDrift = Modifier.graphicsLayer {
-        translationY = -tilt.y * 3.dp.toPx()
-        translationX = -tilt.x * 4.dp.toPx()
+        translationY = -tilt.y * 1.5f.dp.toPx()
+        translationX = -tilt.x * 2.dp.toPx()
     }
 
-    // Liquid glass backdrop: the content zone (bg + pages, no bars) is
-    // recorded into a texture the glass pill refracts.
+    // Liquid glass backdrop: the WHOLE screen (bars included) is
+    // recorded into a texture, so the glass refracts whatever is truly
+    // on screen under the circle - not a curated layer.
     val glassBackdrop = remember { GlassBackdrop() }
     val glassLayer = rememberGraphicsLayer()
     val glassScope = rememberCoroutineScope()
-    var contentTopPx by remember { mutableFloatStateOf(0f) }
+
+    // Nav slide state lives at screen scope so the glass pill can float
+    // ABOVE the captured screen as an overlay (never refracting itself).
+    val navTabs = listOf(Tab.HOMEWORK, Tab.TIMETABLE, Tab.PROFILE, Tab.POINTS, Tab.MORE)
+    val navStains = listOf(
+        Color(0xFF4E8DF5), // Homework - blue
+        Color(0xFF2EBD85), // Timetable - green
+        Color(0xFF9B6BF3), // Profile - purple (goes clear on land)
+        Color(0xFFF2A93B), // Points - amber
+        Color(0xFF7A8AA0)  // More - slate
+    )
+    val selIdx = navTabs.indexOf(ui.tab).coerceAtLeast(0)
+    val slideIdx by animateFloatAsState(targetValue = selIdx.toFloat(), animationSpec = tween(450, easing = EaseInOut), label = "navSlide")
+    val lo = kotlin.math.floor(slideIdx).toInt().coerceIn(0, navTabs.lastIndex)
+    val hi = kotlin.math.ceil(slideIdx).toInt().coerceIn(0, navTabs.lastIndex)
+    val baseStain = lerp(navStains[lo], navStains[hi], slideIdx - lo)
+    val profFactor = (1f - kotlin.math.abs(slideIdx - 2f)).coerceIn(0f, 1f)
+    val stainAlpha = 0.26f * (1f - profFactor)
+    val pillH = 56.dp + 14.dp * profFactor
+    val pillPad = 14.dp * (1f - profFactor) + 2.dp * profFactor
+    val pillDrift = Modifier.graphicsLayer {
+        translationY = -tilt.y * 2.dp.toPx()
+        translationX = -tilt.x * 3.dp.toPx()
+    }
+    var navPos by remember { mutableStateOf(Offset.Zero) }
+    var navSize by remember { mutableStateOf(IntSize(1, 1)) }
+
+    // Recapture triggers: page change, data refresh, every slide
+    // animation frame, and whenever scrolling settles.
     LaunchedEffect(ui.tab) { glassBackdrop.captureVersion++ }
     LaunchedEffect(ui.lastUpdated) { glassBackdrop.captureVersion++ }
+    LaunchedEffect(Unit) {
+        snapshotFlow { slideIdx }.collect { glassBackdrop.captureVersion++ }
+    }
+    LaunchedEffect(Unit) {
+        snapshotFlow { scrollPx }.collectLatest {
+            delay(160)
+            glassBackdrop.captureVersion++
+        }
+    }
 
-    Column(Modifier.fillMaxSize().nestedScroll(scrollProbe)) {
+    Box(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().nestedScroll(scrollProbe).glassBackdrop(glassBackdrop, glassLayer, glassScope, 0.5f)) {
         TopAppBar(
             modifier = Modifier.then(nearDrift).shadow(barElev, ambientColor = softAmbient, spotColor = softSpot),
             title = {
@@ -133,12 +181,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 IconButton(onClick = { vm.refresh() }) { Icon(Icons.Default.Refresh, "Refresh") }
             }
         )
-        Box(
-            Modifier
-                .weight(1f)
-                .onGloballyPositioned { contentTopPx = it.positionInRoot().y }
-                .glassBackdrop(glassBackdrop, glassLayer, glassScope, 0.5f)
-        ) {
+        Box(Modifier.weight(1f)) {
         // Layer 1 (deep): barely-there gradient + faint doodle texture.
         Box(
             Modifier
@@ -183,54 +226,40 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             }
         }
         }
-        NavigationBar(modifier = Modifier.then(nearDrift).shadow(barElev, ambientColor = softAmbient, spotColor = softSpot)) {
-            // One shared stained-glass pill slides to the tapped tab and
-            // lerps its stain through every page colour it passes. Over
-            // PROFILE it expands to a clear ring around the avatar.
-            val navTabs = listOf(Tab.HOMEWORK, Tab.TIMETABLE, Tab.PROFILE, Tab.POINTS, Tab.MORE)
-            val navStains = listOf(
-                Color(0xFF4E8DF5), // Homework - blue
-                Color(0xFF2EBD85), // Timetable - green
-                Color(0xFF9B6BF3), // Profile - purple (goes clear on land)
-                Color(0xFFF2A93B), // Points - amber
-                Color(0xFF7A8AA0)  // More - slate
-            )
-            val selIdx = navTabs.indexOf(ui.tab).coerceAtLeast(0)
-            val slideIdx by animateFloatAsState(targetValue = selIdx.toFloat(), animationSpec = tween(450, easing = EaseInOut), label = "navSlide")
-            val lo = kotlin.math.floor(slideIdx).toInt().coerceIn(0, navTabs.lastIndex)
-            val hi = kotlin.math.ceil(slideIdx).toInt().coerceIn(0, navTabs.lastIndex)
-            val baseStain = lerp(navStains[lo], navStains[hi], slideIdx - lo)
-            val profFactor = (1f - kotlin.math.abs(slideIdx - 2f)).coerceIn(0f, 1f)
-            val stainAlpha = 0.26f * (1f - profFactor)
-            val pillH = 56.dp + 10.dp * profFactor
-            val pillPad = 14.dp * (1f - profFactor) + 2.dp * profFactor
-            val pillDrift = Modifier.graphicsLayer {
-                translationY = -tilt.y * 4.dp.toPx()
-                translationX = -tilt.x * 6.dp.toPx()
-            }
-            BoxWithConstraints(Modifier.fillMaxWidth().height(80.dp)) {
-                val itemW = maxWidth / navTabs.size
-                Box(
-                    Modifier
-                        .align(Alignment.CenterStart)
-                        .offset(x = itemW * slideIdx)
-                        .width(itemW)
-                        .height(pillH)
-                        .padding(horizontal = pillPad)
-                        .then(pillDrift)
-                        .liquidGlass(glassBackdrop, cornerRadius = pillH / 2, edgeWidth = 7.dp, refrStrength = 7.dp, baseAlpha = 0.5f, stainColor = baseStain, stain = stainAlpha, scrollOffsetPx = { contentTopPx })
-                )
-                Row(Modifier.fillMaxSize()) {
-                    GlassNavItem(ui.tab == Tab.HOMEWORK, { vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, "Homework", Modifier.weight(1f))
-                    GlassNavItem(ui.tab == Tab.TIMETABLE, { vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, "Timetable", Modifier.weight(1f))
-                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        ProfileNavButton(ui, vm, onTap = { vm.selectTab(Tab.PROFILE) }, onLong = { accountSheet = true })
-                    }
-                    GlassNavItem(ui.tab == Tab.POINTS, { vm.selectTab(Tab.POINTS) }, { Icon(Icons.Default.Star, null) }, "Points", Modifier.weight(1f))
-                    GlassNavItem(ui.tab == Tab.MORE, { vm.selectTab(Tab.MORE) }, { Icon(Icons.Default.Menu, null) }, "More", Modifier.weight(1f))
+        NavigationBar(modifier = Modifier.then(nearDrift).shadow(barElev, ambientColor = softAmbient, spotColor = softSpot).onGloballyPositioned { navPos = it.positionInRoot(); navSize = it.size }) {
+            Row(Modifier.fillMaxWidth().height(80.dp)) {
+                GlassNavItem(ui.tab == Tab.HOMEWORK, { vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, "Homework", Modifier.weight(1f))
+                GlassNavItem(ui.tab == Tab.TIMETABLE, { vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, "Timetable", Modifier.weight(1f))
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    ProfileNavButton(ui, vm, onTap = { vm.selectTab(Tab.PROFILE) }, onLong = { accountSheet = true })
                 }
+                GlassNavItem(ui.tab == Tab.POINTS, { vm.selectTab(Tab.POINTS) }, { Icon(Icons.Default.Star, null) }, "Points", Modifier.weight(1f))
+                GlassNavItem(ui.tab == Tab.MORE, { vm.selectTab(Tab.MORE) }, { Icon(Icons.Default.Menu, null) }, "More", Modifier.weight(1f))
             }
         }
+    }
+
+    // The one shared stained-glass pill: slides to the tapped tab,
+    // lerping its stain through every page colour it passes; over
+    // PROFILE it expands into a clear ring around the avatar. It sits
+    // ABOVE the captured screen and refracts the real pixels beneath
+    // it; its shadow is generated from its own live stain colour.
+    val density = LocalDensity.current
+    if (navSize.width > 1) {
+        val itemW = with(density) { (navSize.width / navTabs.size).toDp() }
+        val navY = with(density) { navPos.y.toDp() }
+        val navH = with(density) { navSize.height.toDp() }
+        val centerY = navY + navH / 2 - 8.dp * profFactor
+        Box(
+            Modifier
+                .offset(x = itemW * slideIdx + pillPad, y = centerY - pillH / 2)
+                .width(itemW - pillPad * 2)
+                .height(pillH)
+                .shadow(10.dp, RoundedCornerShape(pillH / 2), clip = false, ambientColor = baseStain, spotColor = baseStain)
+                .then(pillDrift)
+                .liquidGlass(glassBackdrop, cornerRadius = pillH / 2, edgeWidth = 7.dp, refrStrength = 7.dp, baseAlpha = 0.5f, stainColor = baseStain, stain = stainAlpha)
+        )
+    }
     }
 
     if (detail != null || detailLoading || detailError != null) {
@@ -484,7 +513,7 @@ fun PointsTab(ui: UiState) {
             }
         }
         item { Text("Achievements", style = MaterialTheme.typography.titleMedium) }
-        items(a.achievement, key = { "ach-" + it.date + (it.comments ?: "") }) { e ->
+        itemsIndexed(a.achievement, key = { i, e -> "ach-$i" }) { _, e ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp)) {
                     Text("+${e.points}  ${e.comments ?: ""}")
@@ -493,7 +522,7 @@ fun PointsTab(ui: UiState) {
             }
         }
         item { Text("Behaviour", style = MaterialTheme.typography.titleMedium) }
-        items(b.behaviour, key = { "beh-" + it.date + (it.comments ?: "") }) { e ->
+        itemsIndexed(b.behaviour, key = { i, e -> "beh-$i" }) { _, e ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp)) {
                     Text("-${e.points}  ${e.comments ?: ""}")
@@ -503,7 +532,7 @@ fun PointsTab(ui: UiState) {
         }
         if (b.detentions.isNotEmpty()) {
             item { Text("Detentions", style = MaterialTheme.typography.titleMedium) }
-            items(b.detentions) { d ->
+            itemsIndexed(b.detentions, key = { i, _ -> "det-$i" }) { _, d ->
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp)) {
                         Text(d.description ?: "")
