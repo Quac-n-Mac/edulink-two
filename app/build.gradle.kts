@@ -34,7 +34,7 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
-    sourceSets["main"].jniLibs.srcDir("../app/jniLibs")
+    sourceSets["main"].jniLibs.srcDir("src/main/jniLibs")
 }
 
 dependencies {
