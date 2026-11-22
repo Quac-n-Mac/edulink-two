@@ -139,16 +139,14 @@ fun Modifier.glassBackdrop(
         layer.record(androidx.compose.ui.unit.IntSize(size.width.toInt(), size.height.toInt())) {
             this@drawWithContent.drawContent()
         }
-        drawLayer(layer)
         val v = backdrop.captureVersion
         scope.launch {
             backdrop.scale = scale
             backdrop.bitmap = layer.toImageBitmap()
             backdrop.capturedVersion = v.toLong()
         }
-    } else {
-        drawContent()
     }
+    drawContent()
 }
 
 private class GlassShaderBrush(
@@ -218,7 +216,7 @@ fun Modifier.liquidGlass(
     }
     var pos by mutableStateOf(Offset.Zero)
     return this
-        .onGloballyPositioned { pos = if (useWindowPos) it.positionInWindow else it.positionInRoot }
+        .onGloballyPositioned { pos = if (useWindowPos) it.positionInWindow() else it.positionInRoot() }
         .drawBehind {
             val bmp = backdrop.bitmap ?: return@drawBehind
             val brush = GlassShaderBrush(
