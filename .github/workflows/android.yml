@@ -20,11 +20,12 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Accept Android SDK licenses (preinstalled SDK)
+      - name: Android SDK prep (preinstalled SDK)
         run: |
+          sudo chown -R "$USER:$USER" "$HOME/.config" 2>/dev/null || true
+          mkdir -p "$HOME/.config/.android"
           SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
-          yes | sudo "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
-          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" --list_installed 2>/dev/null | grep -E 'platforms;android-3|build-tools' | head -5 || true
+          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
 
       - uses: dtolnay/rust-toolchain@stable
         with:
