@@ -56,71 +56,88 @@ uniform float2 resolution;   // surface size, px
 uniform float2 surfacePos;   // surface top-left in root content, px
 uniform float glassScale;    // backdrop px per root px
 uniform float cornerRadius;
-uniform float edgeWidth;     // rim band width, px
-uniform float refrStrength;  // refraction offset at rim, px
-uniform float blurRadius;
-uniform float dispersion;    // chromatic spread factor
+uniform float edgeWidth;     // lens thickness: depth at which refraction dies, px
+uniform float refrStrength;  // refraction distance at the rim, px
+uniform float dispersion;    // relative IOR spread across R/B
 uniform float2 lightDir;     // normalized, toward the light
 uniform float baseAlpha;
 uniform float tintLighten;
 uniform float3 stainColor;
 uniform float stain;
 
+// Liquid-glass refraction modelled on a spherical-cap lens through Snell's
+// law (model: iyinchao/liquid-glass-studio, MIT): the displacement profile
+// comes from the actual optics, not a hand-shaped falloff, which is what
+// makes the rim read as bent light rather than a smear.
+const float IOR = 1.45;
+
 float sdRoundRect(float2 p, float2 halfSize, float r) {
     float2 q = abs(p) - halfSize + r;
     return length(max(q, float2(0.0))) + min(max(q.x, q.y), 0.0) - r;
 }
 
+// True SDF-gradient normal: perpendicular to the edge everywhere, unlike a
+// radial normalize(p) which points diagonally along straight edges.
+float2 sdfNormal(float2 p, float2 halfSize, float r) {
+    float e = 0.75;
+    float2 g = float2(
+        sdRoundRect(p + float2(e, 0.0), halfSize, r) - sdRoundRect(p - float2(e, 0.0), halfSize, r),
+        sdRoundRect(p + float2(0.0, e), halfSize, r) - sdRoundRect(p - float2(0.0, e), halfSize, r));
+    float l = length(g);
+    return l > 0.0001 ? g / l : float2(0.0, -1.0);
+}
+
+// Snell displacement magnitude at a given depth inside the lens.
+float edgeFactor(float depth, float thickness, float ior) {
+    if (depth >= thickness) return 0.0;
+    float x = 1.0 - depth / thickness;
+    float thetaI = asin(clamp(x * x, 0.0, 1.0));
+    float thetaT = asin(clamp(sin(thetaI) / ior, -1.0, 1.0));
+    return -tan(thetaT - thetaI);
+}
+
 half4 main(float2 fragCoord) {
     float2 halfSize = resolution * 0.5;
     float2 p = fragCoord - halfSize;
-    float d = sdRoundRect(p, halfSize, min(cornerRadius, min(halfSize.x, halfSize.y)));
-
-    float rimT = smoothstep(-edgeWidth, 0.0, d);   // 0 deep inside -> 1 at edge
-    float2 grad = normalize(p + float2(0.0001));
-    float2 normal = grad * rimT;
-
-    // refraction offsets, in backdrop-texture px
-    // inward sampling: a convex lens magnifies, so nothing outside the
-    // shape can ever appear inside it (hard containment at the rim)
-    float2 off = -normal * refrStrength * glassScale;
+    float cr = min(cornerRadius, min(halfSize.x, halfSize.y));
+    float d = sdRoundRect(p, halfSize, cr);
+    float depth = -d;                       // 0 at rim, grows inward
+    float thickness = max(edgeWidth, 1.0);
+    float2 n = sdfNormal(p, halfSize, cr);
     float2 base = (surfacePos + fragCoord) * glassScale;
 
-    // chromatic dispersion: R and B refract more/less than G
-    half rC = backdrop.eval(base + off * (1.0 + dispersion)).r;
-    half bC = backdrop.eval(base + off * (1.0 - dispersion)).b;
+    // Per-channel refraction: slight IOR spread = chromatic dispersion.
+    // Inward sampling: a convex lens magnifies, so nothing outside the
+    // shape can ever appear inside it.
+    float fR = edgeFactor(depth, thickness, IOR * (1.0 - dispersion));
+    float fG = edgeFactor(depth, thickness, IOR);
+    float fB = edgeFactor(depth, thickness, IOR * (1.0 + dispersion));
+    float2 rd = -n * refrStrength * glassScale;
+    half3 col = half3(
+        backdrop.eval(base + rd * fR).r,
+        backdrop.eval(base + rd * fG).g,
+        backdrop.eval(base + rd * fB).b);
+    half aC = backdrop.eval(base).a;
 
-    // slight blur on the green/base sample: 4-tap cross, tiny radius
-    float2 t = float2(blurRadius);
-    float2 g0 = base + off;
-    half4 gSum = backdrop.eval(g0 + float2(t.x, 0.0)) + backdrop.eval(g0 - float2(t.x, 0.0))
-               + backdrop.eval(g0 + float2(0.0, t.y)) + backdrop.eval(g0 - float2(0.0, t.y));
-    half gC = gSum.g * 0.25;
-    half aC = gSum.a * 0.25;
-
-    half3 col = half3(rC, gC, bC);
     col = mix(col, half3(1.0), tintLighten);
     col *= half3(0.97, 0.985, 1.03);
 
-    // regular-variant adaptivity (HIG/WWDC25 219): adjust luminosity of the
-    // backdrop content to keep foreground legible - lift over dark content,
-    // settle over light content.
+    // regular-variant adaptivity: lift over dark content, settle over light
     float luma = dot(float3(col), float3(0.299, 0.587, 0.114));
-    float lift = (1.0 - smoothstep(0.12, 0.5, luma)) * 0.16;  // dark behind -> lift
-    float settle = smoothstep(0.62, 0.95, luma) * 0.14;       // bright behind -> dim
+    float lift = (1.0 - smoothstep(0.12, 0.5, luma)) * 0.16;
+    float settle = smoothstep(0.62, 0.95, luma) * 0.14;
     col = col * (1.0 - settle) + half3(1.0) * lift;
 
     // stained glass: a colored tint the light passes through
     col = mix(col, half3(stainColor), stain);
 
-    // fresnel specular rim, brightest toward the light
-    float rimBand = rimT * (1.0 - smoothstep(0.0, 1.5, d));
-    float facing = max(dot(grad, lightDir), 0.0);
-    col += rimBand * (0.18 + 0.6 * pow(facing, 2.5));
+    // fresnel rim: tight pow profile, brightest toward the light
+    float rimT = 1.0 - clamp(depth / thickness, 0.0, 1.0);
+    float facing = max(dot(n, lightDir), 0.0);
+    col += pow(rimT, 3.0) * (0.10 + 0.55 * pow(facing, 2.5));
 
     // inner depth shading away from the light
-    float inner = (1.0 - rimT) * smoothstep(-edgeWidth * 2.5, -edgeWidth * 0.4, d);
-    col *= 1.0 - inner * max(dot(grad, -lightDir), 0.0) * 0.12;
+    col *= 1.0 - pow(rimT, 2.0) * max(dot(n, -lightDir), 0.0) * 0.10;
 
     float alpha = (1.0 - smoothstep(-1.2, -0.2, d)) * baseAlpha * aC;
     return half4(col * alpha, alpha);
@@ -248,11 +265,9 @@ fun Modifier.liquidGlass(
             shader.setFloatUniform("surfacePos", pos.x, pos.y)
             shader.setFloatUniform("glassScale", texScale)
             shader.setFloatUniform("cornerRadius", cornerRadius.toPx())
-            shader.setFloatUniform("edgeWidth", edgeWidth.toPx())
+            shader.setFloatUniform("edgeWidth", edgeWidth.toPx() * 2.5f)
             shader.setFloatUniform("refrStrength", refrStrength.toPx() * VisualTuning.refraction)
-            shader.setFloatUniform("dispersion", 0.9f)
-            // blur taps are in texture texels: scale them with the bound texture
-            shader.setFloatUniform("blurRadius", blurRadius.toPx() * texScale)
+            shader.setFloatUniform("dispersion", 0.04f)
             val ld = lightDir()
             shader.setFloatUniform("lightDir", ld.x, ld.y)
             shader.setFloatUniform("baseAlpha", (baseAlpha * VisualTuning.glassAlpha).coerceIn(0f, 1f))
