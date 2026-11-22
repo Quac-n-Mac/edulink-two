@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -31,6 +32,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /**
  * Liquid glass, iOS 26 style, hand-rolled (no libraries): an AGSL lens
@@ -149,34 +151,41 @@ fun Modifier.glassBackdrop(
     backdrop: GlassBackdrop,
     layer: GraphicsLayer,
     scope: CoroutineScope,
-    scale: Float = 1.0f
+    scale: Float = 0.5f
 ): Modifier = this.onGloballyPositioned { backdrop.rootWinPos = it.positionInWindow() }.drawWithContent {
     if (!backdrop.captureInFlight && backdrop.capturedVersion < backdrop.captureVersion) {
         backdrop.captureInFlight = true
-        // Capture and sampling both use full-resolution root pixels.
-        layer.record(androidx.compose.ui.unit.IntSize(size.width.toInt(), size.height.toInt())) {
-            this@drawWithContent.drawContent()
+        // Record at `scale`: a quarter of the pixels to read back, and
+        // smaller textures stay well clear of GPU/driver size quirks.
+        val cw = (size.width * scale).roundToInt().coerceAtLeast(1)
+        val ch = (size.height * scale).roundToInt().coerceAtLeast(1)
+        layer.record(androidx.compose.ui.unit.IntSize(cw, ch)) {
+            scale(scale, scale, pivot = Offset.Zero) { this@drawWithContent.drawContent() }
         }
         val v = backdrop.captureVersion
         scope.launch {
             try {
-            val bmp = layer.toImageBitmap()
-            if (v.toLong() >= backdrop.capturedVersion) {
-                val src = bmp.asAndroidBitmap()
-                // Bake the blur into real pixels: downscale hard, then
-                // upscale bilinearly. Smooth under ANY filter mode - the
-                // BitmapShader ctor that controls filtering is API 34+.
-                val fw = (src.width / 12).coerceAtLeast(1)
-                val fh = (src.height / 12).coerceAtLeast(1)
-                val small = android.graphics.Bitmap.createScaledBitmap(src, fw, fh, true)
-                val hw2 = (src.width / 2).coerceAtLeast(1)
-                val hh2 = (src.height / 2).coerceAtLeast(1)
-                backdrop.frost = android.graphics.Bitmap.createScaledBitmap(small, hw2, hh2, true).asImageBitmap()
-                backdrop.frostScale = hw2.toFloat() / src.width.toFloat()
-                backdrop.scale = 1f
-                backdrop.bitmap = bmp
-            }
-            backdrop.capturedVersion = maxOf(backdrop.capturedVersion, v.toLong())
+                // toImageBitmap SHARES the layer's GPU buffer: the next
+                // record() overwrites it and shaders then sample torn
+                // garbage (magenta/green noise). Detach into a plain
+                // software bitmap before anyone samples it.
+                val hw = layer.toImageBitmap().asAndroidBitmap()
+                val safe = hw.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
+                if (safe != null && v.toLong() >= backdrop.capturedVersion) {
+                    // Bake the blur into real pixels: downscale hard, then
+                    // upscale bilinearly. Smooth under ANY filter mode - the
+                    // BitmapShader ctor that controls filtering is API 34+.
+                    val fw = (safe.width / 6).coerceAtLeast(1)
+                    val fh = (safe.height / 6).coerceAtLeast(1)
+                    val small = android.graphics.Bitmap.createScaledBitmap(safe, fw, fh, true)
+                    backdrop.frost = android.graphics.Bitmap.createScaledBitmap(small, safe.width, safe.height, true).asImageBitmap()
+                    backdrop.frostScale = scale
+                    backdrop.bitmap = safe.asImageBitmap()
+                    backdrop.scale = scale
+                }
+                backdrop.capturedVersion = maxOf(backdrop.capturedVersion, v.toLong())
+            } catch (_: Throwable) {
+                // keep the last good capture; never poison the textures
             } finally {
                 backdrop.captureInFlight = false
             }
@@ -241,7 +250,7 @@ fun Modifier.liquidGlass(
             shader.setFloatUniform("cornerRadius", cornerRadius.toPx())
             shader.setFloatUniform("edgeWidth", edgeWidth.toPx())
             shader.setFloatUniform("refrStrength", refrStrength.toPx() * VisualTuning.refraction)
-            shader.setFloatUniform("dispersion", 0.45f)
+            shader.setFloatUniform("dispersion", 0.9f)
             // blur taps are in texture texels: scale them with the bound texture
             shader.setFloatUniform("blurRadius", blurRadius.toPx() * texScale)
             val ld = lightDir()

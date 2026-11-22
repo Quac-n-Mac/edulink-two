@@ -111,16 +111,6 @@ private fun HomeworkStatusIcons(ui: UiState, onOpen: () -> Unit) {
     }
 }
 
-/** Wraps the view config with a multiplied touch slop: used INSIDE pager
- * pages so the vertical list needs more travel to claim a drag, letting
- * slightly-angled horizontal swipes page instead of scroll. */
-private class SlopedViewConfiguration(val base: ViewConfiguration, val mult: Float) : ViewConfiguration {
-    override val longPressTimeoutMillis: Long get() = base.longPressTimeoutMillis
-    override val doubleTapMinTimeMillis: Long get() = base.doubleTapMinTimeMillis
-    override val doubleTapTimeoutMillis: Long get() = base.doubleTapTimeoutMillis
-    override val touchSlop: Float get() = base.touchSlop * mult
-}
-
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(ui: UiState, vm: AppViewModel) {
@@ -210,14 +200,38 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     // vertical list scrolling never flips a page. Tab taps ride the same
     // pager animation, keeping both paths in one motion system.
     val pagerState = rememberPagerState(initialPage = selIdx, pageCount = { navTabs.size })
+    // One-way sync while the pager moves: reselecting the tab from a
+    // mid-flight settle used to retrigger the animation below and cancel it
+    // wherever it was - the pill parked mid-flight until a second tap.
     LaunchedEffect(pagerState.settledPage) {
-        val t = navTabs[pagerState.settledPage]
-        if (t != ui.tab) vm.selectTab(t)
+        if (!pagerState.isScrollInProgress) {
+            val t = navTabs[pagerState.settledPage]
+            if (t != ui.tab) vm.selectTab(t)
+        }
     }
+
     LaunchedEffect(ui.tab) {
         val idx = navTabs.indexOf(ui.tab).coerceAtLeast(0)
         if (idx != pagerState.settledPage) {
             pagerState.animateScrollToPage(idx, animationSpec = if (VisualTuning.systemReducedMotion) tween(0) else spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMedium))
+        }
+    }
+    // Watchdog: a tap's target tab survives a cancelled page animation.
+    // Whatever interrupted it, once scrolling stops the pager resumes to the
+    // tapped tab. A real finger drag on the pager drops the target, so
+    // deliberate swipes are never yanked back.
+    var tapTarget by remember { mutableStateOf<Tab?>(null) }
+    LaunchedEffect(Unit) {
+        pagerState.interactionSource.interactions.collect { if (it is androidx.compose.foundation.gestures.DragInteraction.Start) tapTarget = null }
+    }
+    LaunchedEffect(pagerState.isScrollInProgress) {
+        if (!pagerState.isScrollInProgress && dragIndex == null) {
+            val tt = tapTarget
+            if (tt != null) {
+                val idx = navTabs.indexOf(tt).coerceAtLeast(0)
+                if (pagerState.settledPage == idx) tapTarget = null
+                else pagerState.animateScrollToPage(idx, animationSpec = if (VisualTuning.systemReducedMotion) tween(0) else spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMedium))
+            }
         }
     }
     val slideIdx = dragIndex ?: (pagerState.currentPage + pagerState.currentPageOffsetFraction)
@@ -227,11 +241,14 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     val profFactor = (1f - kotlin.math.abs(slideIdx - 2f)).coerceIn(0f, 1f)
     val stainAlpha = 0.55f * (1f - profFactor)
     // Ring grows to wrap the 1.25x avatar (66 * 1.25 = 82.5dp) on PROFILE.
-    val pillH = 62.dp + 26.dp * profFactor
+    val pillH = 62.dp + 21.dp * profFactor
     val pillPad = 8.dp * (1f - profFactor) + 1.5.dp * profFactor
     val pillDrift = Modifier.graphicsLayer {
-        translationY = (-tilt.y * 2.dp.toPx()) * VisualTuning.motionStrength
-        translationX = (-tilt.x * 3.dp.toPx()) * VisualTuning.motionStrength
+        // Parallax drift fades out as the pill becomes the avatar ring: the
+        // ring must sit exactly on the avatar, never float off it.
+        val stick = 1f - profFactor
+        translationY = (-tilt.y * 2.dp.toPx()) * VisualTuning.motionStrength * stick
+        translationX = (-tilt.x * 3.dp.toPx()) * VisualTuning.motionStrength * stick
     }
     // Squash-and-stretch on the sliding pill: peak speed (mid-flight) is
     // thinnest + longest, relaxing toward a circle at both ends.
@@ -300,11 +317,10 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     val overdrag = remember { Animatable(0f) }
     val pagerScope = rememberCoroutineScope()
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val bgBlur = if (android.os.Build.VERSION.SDK_INT >= 31 && (anySheet || accountSheet || lessonSel != null))
-        Modifier.graphicsLayer {
-            renderEffect = android.graphics.RenderEffect.createBlurEffect(VisualTuning.sheetBlur.coerceAtLeast(0.1f), VisualTuning.sheetBlur.coerceAtLeast(0.1f), android.graphics.Shader.TileMode.CLAMP).asComposeRenderEffect()
-        } else Modifier
-    Column(Modifier.fillMaxSize().then(bgBlur).nestedScroll(scrollProbe).glassBackdrop(glassBackdrop, glassLayer, glassScope, 0.5f)) {
+    // No RenderEffect background blur behind sheets: the effect's own
+    // offscreen pass produced magenta/green pixel garbage on his GPU, and
+    // the sheet glass frosts its own region anyway (scrim still dims).
+    Column(Modifier.fillMaxSize().nestedScroll(scrollProbe).glassBackdrop(glassBackdrop, glassLayer, glassScope, 0.5f)) {
         Box(Modifier.fillMaxSize()) {
         // Layer 1 (deep): barely-there gradient + faint doodle texture.
         Box(
@@ -385,8 +401,6 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                         transformOrigin = TransformOrigin(if (o > 0f) 0f else 1f, 0.5f)
                     }
                 }) { page ->
-                val baseCfg = LocalViewConfiguration.current
-                CompositionLocalProvider(LocalViewConfiguration provides SlopedViewConfiguration(baseCfg, 1.5f)) {
                 when (navTabs[page]) {
                     Tab.HOMEWORK -> HomeworkTab(ui, vm) { id, src ->
                         detailError = null
@@ -402,7 +416,6 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                     Tab.POINTS -> PointsTab(ui)
                     Tab.MORE -> MoreTab(ui, vm)
                 }
-                }
             }
             }
         }
@@ -413,14 +426,14 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     // so the raised profile avatar escapes the bar.
     Box(Modifier.align(Alignment.BottomCenter).then(nearDrift)
             .shadow(barElev, clip = false, ambientColor = softAmbient, spotColor = softSpot)
-            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 4.dp, refrStrength = 3.dp, blurRadius = 26.dp, baseAlpha = 0.6f, stainColor = ThemeStore.current.bar, stain = 0.5f, frosted = true)
+            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 4.dp, refrStrength = 5.5.dp, blurRadius = 26.dp, baseAlpha = 0.6f, stainColor = ThemeStore.current.bar, stain = 0.5f, frosted = true)
             .navigationBarsPadding()
             .onGloballyPositioned { navPos = it.positionInRoot(); navSize = it.size }) {
             CompositionLocalProvider(LocalRippleConfiguration provides null) {
             Row(Modifier.fillMaxWidth().height(64.dp).pointerInput(navSize.width) {
                 val itemPx = navSize.width.toFloat() / navTabs.size
                 detectHorizontalDragGestures(
-                    onDragStart = { at -> dragIndex = (at.x / itemPx - 0.5f).coerceIn(0f, navTabs.lastIndex.toFloat()) },
+                    onDragStart = { at -> VisualTuning.navBarDragging = true; dragIndex = (at.x / itemPx - 0.5f).coerceIn(0f, navTabs.lastIndex.toFloat()) },
                     onHorizontalDrag = { change, amount ->
                         change.consume()
                         dragIndex = ((dragIndex ?: selIdx.toFloat()) + amount / itemPx).coerceIn(0f, navTabs.lastIndex.toFloat())
@@ -439,20 +452,22 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                                 dragIndex = null
                                 pagerState.animateScrollToPage(target, animationSpec = if (VisualTuning.systemReducedMotion) tween(0) else spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMedium))
                             }
+                            tapTarget = navTabs[target]
                             vm.selectTab(navTabs[target])
                         }
+                        VisualTuning.navBarDragging = false
                     },
-                    onDragCancel = { dragIndex = null }
+                    onDragCancel = { VisualTuning.navBarDragging = false; dragIndex = null }
                 )
             }) {
-                GlassNavItem(ui.tab == Tab.HOMEWORK, { vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, "Homework", Modifier.weight(1f))
-                GlassNavItem(ui.tab == Tab.TIMETABLE, { vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, "Timetable", Modifier.weight(1f))
+                GlassNavItem(ui.tab == Tab.HOMEWORK, { tapTarget = Tab.HOMEWORK; vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, "Homework", Modifier.weight(1f))
+                GlassNavItem(ui.tab == Tab.TIMETABLE, { tapTarget = Tab.TIMETABLE; vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, "Timetable", Modifier.weight(1f))
                 // The avatar no longer lives in the bar (its glass layer
                 // clipped the protrusion 5 rounds running): this reserves the
                 // slot's width; the avatar itself is the overlay below.
                 Box(modifier = Modifier.weight(1f))
-                GlassNavItem(ui.tab == Tab.POINTS, { vm.selectTab(Tab.POINTS) }, { Icon(Icons.Default.Star, null) }, "Points", Modifier.weight(1f))
-                GlassNavItem(ui.tab == Tab.MORE, { vm.selectTab(Tab.MORE) }, { Icon(Icons.Default.Menu, null) }, "More", Modifier.weight(1f))
+                GlassNavItem(ui.tab == Tab.POINTS, { tapTarget = Tab.POINTS; vm.selectTab(Tab.POINTS) }, { Icon(Icons.Default.Star, null) }, "Points", Modifier.weight(1f))
+                GlassNavItem(ui.tab == Tab.MORE, { tapTarget = Tab.MORE; vm.selectTab(Tab.MORE) }, { Icon(Icons.Default.Menu, null) }, "More", Modifier.weight(1f))
             }
             }
     }
@@ -479,7 +494,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 .then(pillStretch)
                 .shadow(10.dp, RoundedCornerShape(pillH / 2), clip = false, ambientColor = baseStain, spotColor = baseStain)
                 .then(pillDrift)
-                .liquidGlass(glassBackdrop, cornerRadius = pillH / 2, edgeWidth = 7.dp, refrStrength = 7.dp, baseAlpha = 0.42f, stainColor = baseStain, stain = stainAlpha)
+                .liquidGlass(glassBackdrop, cornerRadius = pillH / 2, edgeWidth = 7.dp, refrStrength = 9.5.dp, baseAlpha = 0.42f, stainColor = baseStain, stain = stainAlpha)
         )
     }
 
@@ -496,16 +511,15 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 .graphicsLayer {
                     // Selected emphasis: the avatar grows to 1.25x as the
                     // pill ring slides over it (profFactor tracks the pill).
+                    // It never joins the page's edge rubber-band: the bar is
+                    // not in the pager, so the avatar stays put and unsquashed.
                     val sel = 1f + 0.25f * profFactor
-                    val o = overdrag.value
-                    val pull = abs(o) / 240f
-                    translationX = o
-                    scaleX = sel * (1f - pull * 0.12f)
-                    scaleY = sel * (1f + pull * 0.06f)
+                    scaleX = sel
+                    scaleY = sel
                     transformOrigin = TransformOrigin(0.5f, 0.5f)
                 }
         ) {
-            ProfileNavButton(ui, vm, onTap = { vm.selectTab(Tab.PROFILE) }, onLong = { accountSheet = true }, onPlaced = { avatarCenterY = it })
+            ProfileNavButton(ui, vm, onTap = { tapTarget = Tab.PROFILE; vm.selectTab(Tab.PROFILE) }, onLong = { accountSheet = true }, onPlaced = { avatarCenterY = it })
         }
     }
 
@@ -516,7 +530,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             .align(Alignment.TopCenter)
             .then(nearDrift)
             .shadow(barElev, clip = false, ambientColor = softAmbient, spotColor = softSpot)
-            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 5.dp, refrStrength = 5.dp, blurRadius = 4.dp, baseAlpha = 0.65f, stainColor = ThemeStore.current.bar, stain = 0.25f, frosted = true)
+            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 5.dp, refrStrength = 7.dp, blurRadius = 4.dp, baseAlpha = 0.65f, stainColor = ThemeStore.current.bar, stain = 0.25f, frosted = true)
             .statusBarsPadding(),
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         title = {
@@ -539,9 +553,11 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     if (detail != null || detailLoading || detailError != null) {
         ModalBottomSheet(
             onDismissRequest = { detail = null; detailLoading = false; detailError = null },
-            containerColor = Color.Transparent
+            containerColor = Color.Transparent,
+            dragHandle = {}
         ) {
-            Column(Modifier.fillMaxWidth().heightIn(min = sheetMin).clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f, frosted = true).padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
+            Column(Modifier.fillMaxWidth().heightIn(min = sheetMin).clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 10.dp, blurRadius = 8.dp, baseAlpha = 0.82f, frosted = true).padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
+                SheetGrabHandle()
                 when {
                     detailLoading -> Text("Loading...", style = MaterialTheme.typography.bodyMedium)
                     detail == null -> Text(detailError ?: "could not load homework", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
@@ -587,14 +603,15 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     }
 
     lessonSel?.let { lesson ->
-        ModalBottomSheet(onDismissRequest = { lessonSel = null }, containerColor = Color.Transparent) {
-            Column(Modifier.fillMaxWidth().heightIn(min = sheetMin).clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f, frosted = true)) { LessonSheet(ui, vm, lesson) }
+        ModalBottomSheet(onDismissRequest = { lessonSel = null }, containerColor = Color.Transparent, dragHandle = {}) {
+            Column(Modifier.fillMaxWidth().heightIn(min = sheetMin).clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 10.dp, blurRadius = 8.dp, baseAlpha = 0.82f, frosted = true).padding(horizontal = 12.dp)) { SheetGrabHandle(); LessonSheet(ui, vm, lesson) }
         }
     }
 
     if (accountSheet) {
-        ModalBottomSheet(onDismissRequest = { accountSheet = false }, containerColor = Color.Transparent) {
-            Column(Modifier.fillMaxWidth().heightIn(min = sheetMin).clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f, frosted = true).padding(bottom = 32.dp)) {
+        ModalBottomSheet(onDismissRequest = { accountSheet = false }, containerColor = Color.Transparent, dragHandle = {}) {
+            Column(Modifier.fillMaxWidth().heightIn(min = sheetMin).clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 10.dp, blurRadius = 8.dp, baseAlpha = 0.82f, frosted = true).padding(bottom = 32.dp)) {
+                SheetGrabHandle()
                 Text("Profiles", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
                 ui.accounts.forEach { a ->
                     ListItem(
@@ -623,6 +640,15 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
 }
 
 @OptIn(ExperimentalFoundationApi::class)
+/** In-sheet grab handle: ModalBottomSheet's own handle floats above the
+ * glass (transparent container), so sheets draw theirs inside the glass. */
+@Composable
+private fun SheetGrabHandle() {
+    Box(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(36.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.45f)))
+    }
+}
+
 @Composable
 fun ProfileNavButton(ui: UiState, vm: AppViewModel, onTap: () -> Unit, onLong: () -> Unit, onPlaced: (Float) -> Unit = {}) {
     val avatar = remember(ui.currentAccount) {
@@ -639,7 +665,7 @@ fun ProfileNavButton(ui: UiState, vm: AppViewModel, onTap: () -> Unit, onLong: (
         contentAlignment = Alignment.Center
     ) {
         if (avatar != null) {
-            Image(bitmap = avatar, contentDescription = "Profile", modifier = Modifier.fillMaxSize().clip(CircleShape))
+            Image(bitmap = avatar, contentDescription = "Profile", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().clip(CircleShape))
         } else {
             Icon(Icons.Default.Person, "Profile", tint = Color.White, modifier = Modifier.size(28.dp))
         }
@@ -715,7 +741,7 @@ fun HomeworkTab(ui: UiState, vm: AppViewModel, onTap: (String, String) -> Unit) 
             }
             if (showPast) {
                 items(hw.homework.past, key = { "past-" + it.idString() + it.due_date }) { h ->
-                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if (theme.dark) Color(0xFF232C3D) else Color(0xFFF5F5F5))) {
+                    Card(Modifier.fillMaxWidth().clickable { onTap(h.idString(), h.source ?: "EduLink") }, colors = CardDefaults.cardColors(containerColor = if (theme.dark) Color(0xFF232C3D) else Color(0xFFF5F5F5))) {
                         Column(Modifier.padding(12.dp)) {
                             Text(h.activity, color = onCard)
                             Text("${h.subject} - was due ${h.due_date}", style = MaterialTheme.typography.bodySmall, color = subCard)
@@ -847,7 +873,10 @@ fun MoreTab(ui: UiState, vm: AppViewModel) {
         null -> {
             val hasReportCard = remember { vm.hasCached("reportcard") }
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                val items = mutableListOf("Theme", "Attendance", "Notices", "Exams", "Calendar", "Clubs", "Forms", "Absences", "Detentions", "Moments", "Assessment")
+                val items = mutableListOf("Theme", "Attendance", "Notices", "Exams", "Calendar", "Clubs", "Forms", "Absences", "Detentions", "Assessment")
+                // Moments is staff-side on student logins ("You are not
+                // authorised"); nothing caches then, so the entry hides.
+                if (vm.hasCached("moments")) items += "Moments"
                 if (hasReportCard) items += "Report Card"
                 if (ui.inbox != null || ui.outbox != null) items += "Messages"
                 if (ui.registers != null) items += "Registers"
@@ -1128,15 +1157,23 @@ fun ProfileTab(ui: UiState, vm: AppViewModel) {
     val avatar = remember(ui.currentAccount) {
         vm.avatarFile(ui.currentAccount)?.let { BitmapFactory.decodeFile(it.absolutePath)?.asImageBitmap() }
     }
+    var viewer by remember { mutableStateOf(false) }
+    if (viewer && avatar != null) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { viewer = false }) {
+            Box(Modifier.fillMaxSize().clickable { viewer = false }, contentAlignment = Alignment.Center) {
+                Image(bitmap = avatar, contentDescription = "Profile photo", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)))
+            }
+        }
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
-                    modifier = Modifier.size(96.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.size(96.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary).clickable(enabled = avatar != null) { viewer = true },
                     contentAlignment = Alignment.Center
                 ) {
                     if (avatar != null) {
-                        Image(bitmap = avatar, contentDescription = "Profile photo", modifier = Modifier.fillMaxSize().clip(CircleShape))
+                        Image(bitmap = avatar, contentDescription = "Profile photo", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().clip(CircleShape))
                     } else {
                         Icon(Icons.Default.Person, null, tint = Color.White, modifier = Modifier.size(48.dp))
                     }

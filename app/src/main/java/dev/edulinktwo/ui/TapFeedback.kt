@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -20,8 +21,10 @@ import kotlin.math.roundToInt
 
 private data class Bubble(val id: Int, val pos: Offset, val stretch: Float = 0f, val angle: Float = 0f)
 
-/** Observes without consuming input. Taps AND drags leave fading bubbles:
- * one where the finger lands, then a trail that follows every drag. */
+/** Observes without consuming input. A tap leaves one fading bubble; a drag
+ * is ONE glass blob glued to the finger that stretches along the motion and
+ * relaxes when the finger pauses, fading out where the finger lifts. While
+ * the nav bar is being dragged the blob stays off (the pill owns that drag). */
 @Composable
 fun TapFeedbackHost(content: @Composable () -> Unit) {
     val backdrop = remember { GlassBackdrop() }
@@ -30,33 +33,60 @@ fun TapFeedbackHost(content: @Composable () -> Unit) {
     var bubbles by remember { mutableStateOf(listOf<Bubble>()) }
     var nextId by remember { mutableIntStateOf(0) }
     val radius = with(LocalDensity.current) { 24.dp.toPx() }
-    val trailStep = with(LocalDensity.current) { 44.dp.toPx() }
+
+    // The one live drag blob.
+    var blobPos by remember { mutableStateOf<Offset?>(null) }
+    var blobStretch by remember { mutableFloatStateOf(0f) }
+    var blobAngle by remember { mutableFloatStateOf(0f) }
+    // Jelly: the stretch relaxes every frame the finger doesn't add to it.
+    LaunchedEffect(Unit) {
+        while (true) {
+            withFrameNanos { }
+            blobStretch *= 0.86f
+        }
+    }
+
     Box(Modifier.fillMaxSize().pointerInput(Unit) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-            if (VisualTuning.tapFeedback) {
+            if (VisualTuning.tapFeedback && !VisualTuning.navBarDragging) {
                 // No capture bump: bubbles live outside the captured content,
                 // so spawning one must not trigger a full-screen readback.
                 bubbles = (bubbles + Bubble(nextId, down.position)).takeLast(8)
                 nextId++
             }
-            var lastSpawn = down.position
+            var dragging = false
+            var last = down.position
             var active = true
             while (active) {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
                 val finger = event.changes.firstOrNull { it.id == down.id } ?: break
                 if (finger.pressed) {
-                    if (VisualTuning.tapFeedback && (finger.position - lastSpawn).getDistance() > trailStep) {
-                        val dx = finger.position.x - finger.previousPosition.x
-                        val dy = finger.position.y - finger.previousPosition.y
-                        val sp = kotlin.math.hypot(dx, dy)
-                        val amt = (sp / 30f).coerceIn(0f, 1f)
-                        val ang = if (amt > 0f) Math.toDegrees(kotlin.math.atan2(dy.toDouble(), dx.toDouble())).toFloat() else 0f
-                        bubbles = (bubbles + Bubble(nextId, finger.position, amt, ang)).takeLast(8)
-                        nextId++
-                        lastSpawn = finger.position
+                    val dx = finger.position.x - finger.previousPosition.x
+                    val dy = finger.position.y - finger.previousPosition.y
+                    val sp = kotlin.math.hypot(dx, dy)
+                    if (VisualTuning.tapFeedback && !VisualTuning.navBarDragging) {
+                        if (dragging || (finger.position - down.position).getDistance() > 14f) {
+                            dragging = true
+                            blobPos = finger.position
+                            if (sp > 0.5f) {
+                                blobStretch = blobStretch * 0.55f + (sp / 30f).coerceIn(0f, 1f) * 0.45f
+                                blobAngle = Math.toDegrees(kotlin.math.atan2(dy.toDouble(), dx.toDouble())).toFloat()
+                            }
+                        }
                     }
-                } else active = false
+                    last = finger.position
+                } else {
+                    // Finger up: the blob lets go and fades where it is.
+                    if (dragging && VisualTuning.tapFeedback) {
+                        bubbles = (bubbles + Bubble(nextId, last, blobStretch, blobAngle)).takeLast(8)
+                        nextId++
+                    }
+                    dragging = false
+                    blobPos = null
+                    blobStretch = 0f
+                    active = false
+                }
             }
         }
     }) {
@@ -84,6 +114,20 @@ fun TapFeedbackHost(content: @Composable () -> Unit) {
                     .liquidGlass(backdrop, cornerRadius = 24.dp, edgeWidth = 7.dp,
                         refrStrength = 5.dp, baseAlpha = 0.55f, stainColor = Color.White, stain = 0.3f, frosted = true))
             }
+        }
+        val blob = blobPos
+        if (blob != null && VisualTuning.tapFeedback) {
+            Box(Modifier.offset { IntOffset((blob.x - radius).roundToInt(), (blob.y - radius).roundToInt()) }
+                .size(48.dp)
+                .graphicsLayer {
+                    val s = blobStretch
+                    scaleX = 1f + 0.9f * s
+                    scaleY = 1f - 0.35f * s
+                    rotationZ = blobAngle
+                    transformOrigin = TransformOrigin(0.5f, 0.5f)
+                }
+                .liquidGlass(backdrop, cornerRadius = 24.dp, edgeWidth = 7.dp,
+                    refrStrength = 6.dp, baseAlpha = 0.5f, stainColor = Color.White, stain = 0.3f, frosted = true))
         }
     }
 }

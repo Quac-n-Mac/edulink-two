@@ -15,16 +15,19 @@ object VisualTuning {
     // Defaults are his own tuned setup (screenshotted from v0.6.2, 11:47).
     var parallax by mutableFloatStateOf(0.54f)
     var animationMs by mutableFloatStateOf(254f)
-    var refraction by mutableFloatStateOf(2.87f)
+    var refraction by mutableFloatStateOf(3.2f)
     var glassAlpha by mutableFloatStateOf(0.79f)
     var realGlass by mutableStateOf(true)
     var tapFeedback by mutableStateOf(true)
     var sheetBlur by mutableFloatStateOf(18f)
+    /** True while the finger is dragging the bottom nav bar: the tap-feedback
+     * drag blob stays off so it never fights the pill. Not persisted. */
+    var navBarDragging by mutableStateOf(false)
     fun load(context: Context) {
         val p = context.getSharedPreferences("visual-tuning", Context.MODE_PRIVATE)
         parallax = p.getFloat("parallax", 0.54f).coerceIn(0f, 3f)
         animationMs = p.getFloat("animationMs", 254f).coerceIn(100f, 1500f)
-        refraction = p.getFloat("refraction", 2.87f).coerceIn(0f, 3f)
+        refraction = p.getFloat("refraction", 3.2f).coerceIn(0f, 4f)
         glassAlpha = p.getFloat("glassAlpha", 0.79f).coerceIn(0.1f, 2f)
         realGlass = p.getBoolean("realGlass", true)
         tapFeedback = p.getBoolean("tapFeedback", true)
@@ -38,7 +41,7 @@ object VisualTuning {
             .putFloat("sheetBlur", sheetBlur).apply()
     }
     fun reset() {
-        parallax = 0.54f; animationMs = 254f; refraction = 2.87f; glassAlpha = 0.79f
+        parallax = 0.54f; animationMs = 254f; refraction = 3.2f; glassAlpha = 0.79f
         realGlass = true; tapFeedback = true; sheetBlur = 18f
     }
 }
@@ -51,7 +54,7 @@ fun CustomisationSection() {
         Text("Changes apply now and are saved on this device. Screenshot these values when you have your favourite setup.")
         TuningSlider("Parallax", VisualTuning.parallax, 0f..3f, "%.2fx".format(VisualTuning.parallax)) { VisualTuning.parallax = it }
         TuningSlider("Animation duration", VisualTuning.animationMs, 100f..1500f, "%.0f ms".format(VisualTuning.animationMs)) { VisualTuning.animationMs = it }
-        TuningSlider("Refraction strength", VisualTuning.refraction, 0f..3f, "%.2fx".format(VisualTuning.refraction)) { VisualTuning.refraction = it }
+        TuningSlider("Refraction strength", VisualTuning.refraction, 0f..4f, "%.2fx".format(VisualTuning.refraction)) { VisualTuning.refraction = it }
         TuningSlider("Glass opacity", VisualTuning.glassAlpha, 0.1f..2f, "%.2fx".format(VisualTuning.glassAlpha)) { VisualTuning.glassAlpha = it }
         TuningSlider("Sheet background blur", VisualTuning.sheetBlur, 0f..50f, "%.0f px".format(VisualTuning.sheetBlur)) { VisualTuning.sheetBlur = it }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

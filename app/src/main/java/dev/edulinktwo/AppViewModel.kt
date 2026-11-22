@@ -339,7 +339,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun forms(onDone: (FormsData?, String?) -> Unit) = wave2("forms", "EduLink.Forms", "{\"format\":2}", { decodeSurface<FormsData>(it).first }, onDone)
+    // OG sends for="learner"|"parent"; without it the API 400s
+    // ("Missing required property [for]"). All our accounts are learners.
+    fun forms(onDone: (FormsData?, String?) -> Unit) = wave2("forms", "EduLink.Forms", "{\"for\":\"learner\",\"format\":2}", { decodeSurface<FormsData>(it).first }, onDone)
     fun formDetail(id: Int, onDone: (FormDetailData?, String?) -> Unit) = wave2("form-$id", "EduLink.Form", "{\"form_id\":$id,\"format\":2}", { decodeSurface<FormDetailData>(it).first }, onDone)
     fun absences(onDone: (AbsencesData?, String?) -> Unit) = wave2("absences", "EduLink.AbsenceManagement", "{\"format\":2}", { decodeSurface<AbsencesData>(it).first }, onDone)
     fun detentions(onDone: (DetentionsData?, String?) -> Unit) = wave2("detentions", "EduLink.DetentionSessions", "{\"format\":2}", { decodeSurface<DetentionsData>(it).first }, onDone)
