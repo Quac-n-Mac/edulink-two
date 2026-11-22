@@ -20,6 +20,7 @@ object RustBridge {
     ): String
 
     external fun nativeRefresh(stateDir: String, cacheDir: String): String
+    external fun nativeDemoLogin(stateDir: String, cacheDir: String): String
     external fun nativeGetCached(stateDir: String, cacheDir: String, name: String): String
     external fun nativeHwDetail(stateDir: String, cacheDir: String, id: String, source: String): String
     external fun nativeHwAttachment(stateDir: String, cacheDir: String, id: String): String

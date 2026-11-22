@@ -5,6 +5,7 @@
 use anyhow::{Context, Result};
 use edulink_two::cache::{Cache, TTL_HW_DETAIL};
 use edulink_two::client::Client;
+use edulink_two::demo;
 use edulink_two::session::{AccountStore, Session};
 use edulink_two::transport::{HttpTransport, Transport};
 use jni::objects::{JClass, JString};
@@ -116,6 +117,9 @@ async fn do_refresh(state_dir: PathBuf, cache_dir: PathBuf) -> Result<Value> {
         .current()
         .context("not logged in")?
         .clone();
+    if demo::is_demo(&session) {
+        return Ok(json!({"ok": true, "surfaces_ok": 0, "failed": [], "total_ms": 0, "demo": true}));
+    }
     let client = client_for(&session)?;
     let cache = Cache::new(&cache_dir)?.for_user(&session.key())?;
     let date = chrono_today();
@@ -180,6 +184,9 @@ async fn do_hw_detail(state_dir: PathBuf, cache_dir: PathBuf, id: String, source
                 }
             }
         }
+    }
+    if demo::is_demo(&session) {
+        anyhow::bail!("no cached demo detail for this item");
     }
     let client = client_for(&session)?;
     let source = if source.is_empty() { "EduLink".to_string() } else { source };
@@ -456,6 +463,24 @@ pub extern "system" fn Java_dev_edulinktwo_RustBridge_nativeRemoveAccount(
     })();
     match out {
         Ok(s) => to_jstring(&mut env, s),
+        Err(e) => to_jstring(&mut env, err_str(&e)),
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_edulinktwo_RustBridge_nativeDemoLogin(
+    mut env: JNIEnv,
+    _class: JClass,
+    state_dir: JString,
+    cache_dir: JString,
+) -> jstring {
+    let out = (|| -> Result<Value> {
+        let state_dir = PathBuf::from(get(&mut env, &state_dir)?);
+        let cache_dir = PathBuf::from(get(&mut env, &cache_dir)?);
+        block_on(demo::demo_login(state_dir, cache_dir))
+    })();
+    match out {
+        Ok(v) => to_jstring(&mut env, v.to_string()),
         Err(e) => to_jstring(&mut env, err_str(&e)),
     }
 }

@@ -256,7 +256,7 @@ private fun SchoolCodeStep(
                 }
             )
             Spacer(Modifier.height(16.dp))
-            DemoButton(onClick = { }, backdrop = backdrop, lightDir = lightDir)
+            DemoButton(onClick = { vm.loginDemo() })
         }
     }
 }
@@ -387,7 +387,7 @@ private fun CredentialsStep(
                 }
             )
             Spacer(Modifier.height(16.dp))
-            DemoButton(onClick = { }, backdrop = backdrop, lightDir = lightDir)
+            DemoButton(onClick = { vm.loginDemo() })
         }
     }
 }

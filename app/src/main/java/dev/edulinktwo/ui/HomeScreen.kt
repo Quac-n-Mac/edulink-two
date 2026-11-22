@@ -23,13 +23,23 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import dev.edulinktwo.*
+import dev.edulinktwo.R
 import java.time.LocalDate
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,8 +58,47 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     BackHandler(enabled = accountSheet) { accountSheet = false }
     BackHandler(enabled = !anySheet && !accountSheet && ui.tab != Tab.HOMEWORK) { vm.selectTab(Tab.HOMEWORK) }
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    // 3-layer parallax: a deep background plane drifts against scroll and
+    // device tilt, content scrolls at full speed, and the bars stay pinned
+    // above it with a shadow that appears once content is under them.
+    val tilt by rememberTilt()
+    var scrollPx by remember { mutableFloatStateOf(0f) }
+    val scrollProbe = remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                scrollPx = (scrollPx + consumed.y).coerceIn(0f, 12000f)
+                return Offset.Zero
+            }
+        }
+    }
+    LaunchedEffect(ui.tab) { scrollPx = 0f }
+    val barElev = if (scrollPx > 6f) 6.dp else 0.dp
+
+    Box(Modifier.fillMaxSize().nestedScroll(scrollProbe)) {
+        // Layer 1 (deep): barely-there gradient + faint doodle texture.
+        val drift = Modifier.graphicsLayer {
+            scaleX = 1.1f; scaleY = 1.1f
+            translationY = -scrollPx * 0.12f - tilt.y * 8.dp.toPx()
+            translationX = -tilt.x * 10.dp.toPx()
+        }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .then(drift)
+                .background(Brush.verticalGradient(listOf(Color(0xFFF6F8FA), Color(0xFFE8EDF3))))
+        )
+        Image(
+            painter = painterResource(R.drawable.login_bg),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            alpha = 0.05f,
+            modifier = Modifier.fillMaxSize().then(drift)
+        )
+
+        // Layers 2+3: content scrolls between the pinned bars.
+        Column(Modifier.fillMaxSize()) {
             TopAppBar(
+                modifier = Modifier.shadow(barElev),
                 title = {
                     Column {
                         Text("Edulink Two")
@@ -92,7 +141,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 }
             }
         }
-        NavigationBar {
+        NavigationBar(modifier = Modifier.shadow(barElev)) {
             NavigationBarItem(ui.tab == Tab.HOMEWORK, { vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, label = { Text("Homework") })
             NavigationBarItem(ui.tab == Tab.TIMETABLE, { vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, label = { Text("Timetable") })
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -100,6 +149,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             }
             NavigationBarItem(ui.tab == Tab.POINTS, { vm.selectTab(Tab.POINTS) }, { Icon(Icons.Default.Star, null) }, label = { Text("Points") })
             NavigationBarItem(ui.tab == Tab.MORE, { vm.selectTab(Tab.MORE) }, { Icon(Icons.Default.Menu, null) }, label = { Text("More") })
+        }
         }
     }
 

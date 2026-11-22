@@ -75,6 +75,7 @@ jobs:
           path: out/
 
       - name: Publish prerelease
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.1.0-nightly
