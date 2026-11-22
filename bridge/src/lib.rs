@@ -95,10 +95,12 @@ async fn do_login(state_dir: PathBuf, cache_dir: PathBuf, host: String, school_c
     if let Ok(d) = pre.clubs.result { cache.write("clubs", &d).await?; ok += 1; } else if let Err(e) = pre.clubs.result { failed.push(format!("clubs: {e:#}")); }
     if let Ok(d) = pre.personal.result { cache.write("personal", &d).await?; ok += 1; } else if let Err(e) = pre.personal.result { failed.push(format!("personal: {e:#}")); }
     if let Ok(d) = pre.inbox.result { cache.write("inbox", &d).await?; ok += 1; } else if let Err(e) = pre.inbox.result { failed.push(format!("inbox: {e:#}")); }
+    let avatar_b64 = user.avatar.as_ref().and_then(|a| a.photo.clone());
     Ok(json!({
         "ok": true,
         "key": session.key(),
         "display_name": session.display_name,
+        "avatar_b64": avatar_b64,
         "school": session.school,
         "learner_id": session.learner_id,
         "school_id": session.school_id,
