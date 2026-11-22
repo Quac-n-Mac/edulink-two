@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#00365D</color>
+    <color name="edulink_blue">#00365D</color>
+    <color name="edulink_blue_light">#0A4E85</color>
+    <color name="edulink_accent">#4CA1E3</color>
+</resources>
