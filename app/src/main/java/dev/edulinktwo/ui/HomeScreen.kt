@@ -107,10 +107,10 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         translationY = -tilt.y * 6.dp.toPx()
         translationX = -tilt.x * 10.dp.toPx()
     }
-    val sheetDrift = Modifier.graphicsLayer {
-        translationY = tilt.y * 5.dp.toPx()
-        translationX = tilt.x * 7.dp.toPx()
-    }
+    // Sheets no longer drift: they are glass panels sampling the static
+    // backdrop beneath them, and a translated lens over an untranslated
+    // sample reads as a sampling bug. (This supersedes his earlier
+    // negative-parallax-on-sheets ask - the glass IS the depth now.)
     val nearDrift = Modifier.graphicsLayer {
         translationY = -tilt.y * 1.5f.dp.toPx()
         translationX = -tilt.x * 2.dp.toPx()
@@ -165,23 +165,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
 
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().nestedScroll(scrollProbe).glassBackdrop(glassBackdrop, glassLayer, glassScope, 0.5f)) {
-        TopAppBar(
-            modifier = Modifier.then(nearDrift).shadow(barElev, ambientColor = softAmbient, spotColor = softSpot),
-            title = {
-                Column {
-                    Text("Edulink Two")
-                    Text(
-                        "updated ${ageLabel(ui.lastUpdated)}" +
-                            (if (ui.offline) " - offline, last-known data" else if (ui.degraded) " - slow connection mode" else ""),
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-            },
-            actions = {
-                IconButton(onClick = { vm.refresh() }) { Icon(Icons.Default.Refresh, "Refresh") }
-            }
-        )
-        Box(Modifier.weight(1f)) {
+        Box(Modifier.weight(1f).padding(top = 64.dp)) {
         // Layer 1 (deep): barely-there gradient + faint doodle texture.
         Box(
             Modifier
@@ -260,13 +244,38 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 .liquidGlass(glassBackdrop, cornerRadius = pillH / 2, edgeWidth = 7.dp, refrStrength = 7.dp, baseAlpha = 0.5f, stainColor = baseStain, stain = stainAlpha)
         )
     }
+
+    // Top bar as a liquid-glass panel floating over the content: it
+    // refracts the parallax background drifting beneath it.
+    TopAppBar(
+        modifier = Modifier
+            .align(Alignment.TopCenter)
+            .then(nearDrift)
+            .shadow(barElev, ambientColor = softAmbient, spotColor = softSpot)
+            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 5.dp, refrStrength = 5.dp, baseAlpha = 0.45f),
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+        title = {
+            Column {
+                Text("Edulink Two")
+                Text(
+                    "updated ${ageLabel(ui.lastUpdated)}" +
+                        (if (ui.offline) " - offline, last-known data" else if (ui.degraded) " - slow connection mode" else ""),
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        },
+        actions = {
+            IconButton(onClick = { vm.refresh() }) { Icon(Icons.Default.Refresh, "Refresh") }
+        }
+    )
     }
 
     if (detail != null || detailLoading || detailError != null) {
         ModalBottomSheet(
-            onDismissRequest = { detail = null; detailLoading = false; detailError = null }
+            onDismissRequest = { detail = null; detailLoading = false; detailError = null },
+            containerColor = Color.Transparent
         ) {
-            Column(Modifier.then(sheetDrift).padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
+            Column(Modifier.clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, baseAlpha = 0.62f).padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
                 when {
                     detailLoading -> Text("Loading...", style = MaterialTheme.typography.bodyMedium)
                     detail == null -> Text(detailError ?: "could not load homework", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
@@ -312,14 +321,14 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     }
 
     lessonSel?.let { lesson ->
-        ModalBottomSheet(onDismissRequest = { lessonSel = null }) {
-            Column(Modifier.then(sheetDrift)) { LessonSheet(ui, vm, lesson) }
+        ModalBottomSheet(onDismissRequest = { lessonSel = null }, containerColor = Color.Transparent) {
+            Column(Modifier.clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, baseAlpha = 0.62f)) { LessonSheet(ui, vm, lesson) }
         }
     }
 
     if (accountSheet) {
-        ModalBottomSheet(onDismissRequest = { accountSheet = false }) {
-            Column(Modifier.padding(bottom = 32.dp)) {
+        ModalBottomSheet(onDismissRequest = { accountSheet = false }, containerColor = Color.Transparent) {
+            Column(Modifier.clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, baseAlpha = 0.62f).padding(bottom = 32.dp)) {
                 Text("Profiles", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
                 ui.accounts.forEach { a ->
                     ListItem(

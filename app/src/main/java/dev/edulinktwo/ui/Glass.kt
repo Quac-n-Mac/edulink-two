@@ -124,6 +124,8 @@ half4 main(float2 fragCoord) {
 class GlassBackdrop {
     var bitmap by mutableStateOf<ImageBitmap?>(null)
     var scale by mutableStateOf(0.5f)
+    /** window position of the captured root's top-left, px */
+    var rootWinPos by mutableStateOf(Offset.Zero)
     /** bump to request a fresh capture */
     var captureVersion by mutableIntStateOf(0)
     internal var capturedVersion by mutableLongStateOf(-1)
@@ -139,7 +141,7 @@ fun Modifier.glassBackdrop(
     layer: GraphicsLayer,
     scope: CoroutineScope,
     scale: Float = 1.0f
-): Modifier = this.drawWithContent {
+): Modifier = this.onGloballyPositioned { backdrop.rootWinPos = it.positionInWindow() }.drawWithContent {
     if (backdrop.capturedVersion < backdrop.captureVersion) {
         layer.record(androidx.compose.ui.unit.IntSize(size.width.toInt(), size.height.toInt())) {
             this@drawWithContent.drawContent()
@@ -188,7 +190,7 @@ fun Modifier.liquidGlass(
         override fun createShader(size: Size): Shader = shader
     }
     return this
-        .onGloballyPositioned { pos = it.positionInRoot() }
+        .onGloballyPositioned { pos = it.positionInWindow() - backdrop.rootWinPos }
         .drawBehind {
             val bmp = backdrop.bitmap ?: return@drawBehind
             shader.setInputBuffer(
