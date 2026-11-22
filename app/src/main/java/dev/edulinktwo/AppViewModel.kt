@@ -160,6 +160,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Offline demo account: fixtures only, no network. */
+    fun loginDemo() {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { RustBridge.nativeDemoLogin(stateDir, cacheDir) }
+            reloadAccounts()
+            loadCachedAll()
+            _ui.value = _ui.value.copy(showLogin = false)
+        }
+    }
+
     fun refresh() {
         if (_ui.value.refreshing) return // coalesce refresh requests
         _ui.value = _ui.value.copy(refreshing = true, error = null)

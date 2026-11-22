@@ -4,6 +4,7 @@
 pub mod cache;
 pub mod cli;
 pub mod client;
+pub mod demo;
 pub mod models;
 pub mod session;
 pub mod transport;
