@@ -34,6 +34,9 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.layer.rememberGraphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import android.graphics.BitmapFactory
@@ -99,11 +102,39 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         translationX = -tilt.x * 48.dp.toPx()
     }
 
-    Box(Modifier.fillMaxSize().nestedScroll(scrollProbe)) {
+    // Liquid glass backdrop: the content zone (bg + pages, no bars) is
+    // recorded into a texture the glass pill refracts.
+    val glassBackdrop = remember { GlassBackdrop() }
+    val glassLayer = rememberGraphicsLayer()
+    val glassScope = rememberCoroutineScope()
+    var contentTopPx by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(ui.tab) { glassBackdrop.captureVersion++ }
+    LaunchedEffect(ui.lastUpdated) { glassBackdrop.captureVersion++ }
+
+    Column(Modifier.fillMaxSize().nestedScroll(scrollProbe)) {
+        TopAppBar(
+            modifier = Modifier.then(nearDrift).shadow(barElev, ambientColor = softAmbient, spotColor = softSpot),
+            title = {
+                Column {
+                    Text("Edulink Two")
+                    Text(
+                        "updated ${ageLabel(ui.lastUpdated)}" +
+                            (if (ui.offline) " - offline, last-known data" else if (ui.degraded) " - slow connection mode" else ""),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            },
+            actions = {
+                IconButton(onClick = { vm.refresh() }) { Icon(Icons.Default.Refresh, "Refresh") }
+            }
+        )
+        Box(
+            Modifier
+                .weight(1f)
+                .onGloballyPositioned { contentTopPx = it.positionInRoot().y }
+                .glassBackdrop(glassBackdrop, glassLayer, glassScope, 0.5f)
+        ) {
         // Layer 1 (deep): barely-there gradient + faint doodle texture.
-        // Perspective stack (calibration: the "Perspective" wallpaper app at
-        // ~70-80%): rotation-driven, layers at increasing depth amplitudes,
-        // background also rotates a touch for the 3D read.
         Box(
             Modifier
                 .fillMaxSize()
@@ -118,28 +149,10 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             modifier = Modifier.fillMaxSize().then(drift)
         )
 
-        // Layers 2+4: content scrolls between the bars; bars ride nearest.
-        Column(Modifier.fillMaxSize()) {
-            TopAppBar(
-                modifier = Modifier.then(nearDrift).shadow(barElev, ambientColor = softAmbient, spotColor = softSpot),
-                title = {
-                    Column {
-                        Text("Edulink Two")
-                        Text(
-                            "updated ${ageLabel(ui.lastUpdated)}" +
-                                (if (ui.offline) " - offline, last-known data" else if (ui.degraded) " - slow connection mode" else ""),
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { vm.refresh() }) { Icon(Icons.Default.Refresh, "Refresh") }
-                }
-            )
         PullToRefreshBox(
             isRefreshing = ui.refreshing,
             onRefresh = { vm.refresh() },
-            modifier = Modifier.weight(1f).then(contentDrift)
+            modifier = Modifier.fillMaxSize().then(contentDrift)
         ) {
             // Fast transitions: 120ms, no slow fades.
             AnimatedContent(
@@ -164,15 +177,22 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 }
             }
         }
+        }
         NavigationBar(modifier = Modifier.then(nearDrift).shadow(barElev, ambientColor = softAmbient, spotColor = softSpot)) {
-            NavigationBarItem(ui.tab == Tab.HOMEWORK, { vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, label = { Text("Homework") })
-            NavigationBarItem(ui.tab == Tab.TIMETABLE, { vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, label = { Text("Timetable") })
+            val pillDrift = Modifier.graphicsLayer {
+                translationY = -tilt.y * 40.dp.toPx()
+                translationX = -tilt.x * 60.dp.toPx()
+            }
+            GlassNavItem(ui.tab == Tab.HOMEWORK, { vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, "Homework", glassBackdrop, { contentTopPx }, pillDrift, Modifier.weight(1f))
+            GlassNavItem(ui.tab == Tab.TIMETABLE, { vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, "Timetable", glassBackdrop, { contentTopPx }, pillDrift, Modifier.weight(1f))
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                if (ui.tab == Tab.PROFILE) {
+                    Box(Modifier.size(60.dp).then(pillDrift).liquidGlass(glassBackdrop, cornerRadius = 30.dp, edgeWidth = 7.dp, refrStrength = 7.dp, baseAlpha = 0.5f, stainColor = MaterialTheme.colorScheme.primary, stain = 0.22f, scrollOffsetPx = { contentTopPx }))
+                }
                 ProfileNavButton(ui, vm, onTap = { vm.selectTab(Tab.PROFILE) }, onLong = { accountSheet = true })
             }
-            NavigationBarItem(ui.tab == Tab.POINTS, { vm.selectTab(Tab.POINTS) }, { Icon(Icons.Default.Star, null) }, label = { Text("Points") })
-            NavigationBarItem(ui.tab == Tab.MORE, { vm.selectTab(Tab.MORE) }, { Icon(Icons.Default.Menu, null) }, label = { Text("More") })
-        }
+            GlassNavItem(ui.tab == Tab.POINTS, { vm.selectTab(Tab.POINTS) }, { Icon(Icons.Default.Star, null) }, "Points", glassBackdrop, { contentTopPx }, pillDrift, Modifier.weight(1f))
+            GlassNavItem(ui.tab == Tab.MORE, { vm.selectTab(Tab.MORE) }, { Icon(Icons.Default.Menu, null) }, "More", glassBackdrop, { contentTopPx }, pillDrift, Modifier.weight(1f))
         }
     }
 
@@ -1018,5 +1038,48 @@ private fun TeachersSection(ui: UiState) {
                 Text(listOfNotNull(t.email, t.phone).joinToString("  "), style = MaterialTheme.typography.labelSmall)
             }
         }
+    }
+}
+
+/** Nav bar item whose selected state is a stained liquid-glass pill on
+ * the nearest parallax layer (icon + label keep the stock look on top). */
+@Composable
+fun GlassNavItem(
+    selected: Boolean,
+    onClick: () -> Unit,
+    icon: @Composable () -> Unit,
+    label: String,
+    backdrop: GlassBackdrop,
+    contentTopPx: () -> Float,
+    pillDrift: Modifier,
+    modifier: Modifier = Modifier
+) {
+    Box(modifier, contentAlignment = Alignment.Center) {
+        if (selected) {
+            Box(
+                Modifier
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .then(pillDrift)
+                    .liquidGlass(
+                        backdrop,
+                        cornerRadius = 20.dp,
+                        edgeWidth = 7.dp,
+                        refrStrength = 7.dp,
+                        baseAlpha = 0.5f,
+                        stainColor = MaterialTheme.colorScheme.primary,
+                        stain = 0.22f,
+                        scrollOffsetPx = contentTopPx
+                    )
+            )
+        }
+        NavigationBarItem(
+            selected = selected,
+            onClick = onClick,
+            icon = icon,
+            label = { Text(label) },
+            colors = NavigationBarItemDefaults.colors(indicatorColor = Color.Transparent)
+        )
     }
 }

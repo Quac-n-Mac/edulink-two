@@ -59,6 +59,8 @@ uniform float dispersion;    // chromatic spread factor
 uniform float2 lightDir;     // normalized, toward the light
 uniform float baseAlpha;
 uniform float tintLighten;
+uniform float3 stainColor;
+uniform float stain;
 
 float sdRoundRect(float2 p, float2 halfSize, float r) {
     float2 q = abs(p) - halfSize + r;
@@ -101,6 +103,9 @@ half4 main(float2 fragCoord) {
     float lift = (1.0 - smoothstep(0.12, 0.5, luma)) * 0.16;  // dark behind -> lift
     float settle = smoothstep(0.62, 0.95, luma) * 0.14;       // bright behind -> dim
     col = col * (1.0 - settle) + half3(1.0) * lift;
+
+    // stained glass: a colored tint the light passes through
+    col = mix(col, half3(stainColor), stain);
 
     // fresnel specular rim, brightest toward the light
     float rimBand = rimT * (1.0 - smoothstep(0.0, 1.5, d));
@@ -155,6 +160,8 @@ fun Modifier.liquidGlass(
     edgeWidth: Dp = 10.dp,
     refrStrength: Dp = 9.dp,
     baseAlpha: Float = 0.55f,
+    stainColor: Color = Color.Transparent,
+    stain: Float = 0f,
     scrollOffsetPx: () -> Float = { 0f },
     lightDir: () -> Offset = { Offset(-0.55f, -0.83f) },
     fallbackColor: Color = Color(0x59FFFFFF),
@@ -200,6 +207,8 @@ fun Modifier.liquidGlass(
             shader.setFloatUniform("lightDir", ld.x, ld.y)
             shader.setFloatUniform("baseAlpha", baseAlpha)
             shader.setFloatUniform("tintLighten", 0.07f)
+            shader.setFloatUniform("stainColor", stainColor.red, stainColor.green, stainColor.blue)
+            shader.setFloatUniform("stain", stain)
             val rr = RoundRect(0f, 0f, size.width, size.height, CornerRadius(cornerRadius.toPx()))
             val path = Path().apply { addRoundRect(rr) }
             clipPath(path) { drawRect(brush) }

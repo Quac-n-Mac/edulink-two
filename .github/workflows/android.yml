@@ -81,38 +81,6 @@ jobs:
           name: edulink-two-apk
           path: out/
 
-      - name: Read app version
-        id: ver
-        run: |
-          VN=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
-          VC=$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts)
-          echo "name=$VN" >> "$GITHUB_OUTPUT"
-          echo "code=$VC" >> "$GITHUB_OUTPUT"
-
-      - name: Publish versioned prerelease
-        if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.ver.outputs.name }}
-          name: Edulink Two v${{ steps.ver.outputs.name }} (build ${{ steps.ver.outputs.code }})
-          prerelease: true
-          files: out/edulink-two.apk
-          fail_on_unmatched_files: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Keep the always-latest nightly pointer updated
-        if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v0.1.0-nightly
-          name: Edulink Two nightly (currently v${{ steps.ver.outputs.name }}, build ${{ steps.ver.outputs.code }})
-          prerelease: true
-          files: out/edulink-two.apk
-          fail_on_unmatched_files: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   screenshots:
     needs: build
     runs-on: macos-latest
@@ -131,7 +99,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-34-arm64-v8a-pixel_6
+          key: avd-34-arm64-v8a-pixel_6-v2
 
       - name: Boot emulator and capture login screens
         uses: reactivecircus/android-emulator-runner@v2
@@ -148,3 +116,48 @@ jobs:
         with:
           name: login-screenshots
           path: shots/
+
+  publish:
+    # Gated on screenshots so visually broken builds (glass!) never reach
+    # the nightly unverified. If screenshots flakes, re-run its job; or in
+    # an emergency run the release steps manually via the API.
+    needs: [build, screenshots]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: edulink-two-apk
+          path: out
+
+      - name: Read app version
+        id: ver
+        run: |
+          VN=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          VC=$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts)
+          echo "name=$VN" >> "$GITHUB_OUTPUT"
+          echo "code=$VC" >> "$GITHUB_OUTPUT"
+
+      - name: Publish versioned prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.name }}
+          name: Edulink Two v${{ steps.ver.outputs.name }} (build ${{ steps.ver.outputs.code }})
+          prerelease: true
+          files: out/edulink-two.apk
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Keep the always-latest nightly pointer updated
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.0-nightly
+          name: Edulink Two nightly (currently v${{ steps.ver.outputs.name }}, build ${{ steps.ver.outputs.code }})
+          prerelease: true
+          files: out/edulink-two.apk
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
