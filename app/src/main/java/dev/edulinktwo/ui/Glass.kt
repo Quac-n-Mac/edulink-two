@@ -70,7 +70,7 @@ float sdRoundRect(float2 p, float2 halfSize, float r) {
 half4 main(float2 fragCoord) {
     float2 halfSize = resolution * 0.5;
     float2 p = fragCoord - halfSize;
-    float d = sdRoundRect(p, halfSize, cornerRadius);
+    float d = sdRoundRect(p, halfSize, min(cornerRadius, min(halfSize.x, halfSize.y)));
 
     float rimT = smoothstep(-edgeWidth, 0.0, d);   // 0 deep inside -> 1 at edge
     float2 grad = normalize(p + float2(0.0001));
@@ -184,7 +184,7 @@ fun Modifier.liquidGlass(
         drawBehind {
             val rr = RoundRect(0f, 0f, size.width, size.height, CornerRadius(cornerRadius.toPx()))
             val path = Path().apply { addRoundRect(rr) }
-            clipPath(path) { drawRect(Color(0x10FFFFFF)) }
+            clipPath(path) { drawRect(Color.White.copy(alpha = (0.06f * VisualTuning.glassAlpha).coerceIn(0f, 1f))) }
             drawRoundRect(
                 color = Color(0x2EFFFFFF),
                 size = size,
@@ -193,7 +193,7 @@ fun Modifier.liquidGlass(
             )
         }
     }
-    if (Build.VERSION.SDK_INT < 33) {
+    if (Build.VERSION.SDK_INT < 33 || !VisualTuning.realGlass) {
         return this.fallback()
     }
     var pos by mutableStateOf(Offset.Zero)
@@ -216,11 +216,11 @@ fun Modifier.liquidGlass(
             shader.setFloatUniform("glassScale", backdrop.scale)
             shader.setFloatUniform("cornerRadius", cornerRadius.toPx())
             shader.setFloatUniform("edgeWidth", edgeWidth.toPx())
-            shader.setFloatUniform("refrStrength", refrStrength.toPx())
+            shader.setFloatUniform("refrStrength", refrStrength.toPx() * VisualTuning.refraction)
             shader.setFloatUniform("dispersion", 0.45f)
             val ld = lightDir()
             shader.setFloatUniform("lightDir", ld.x, ld.y)
-            shader.setFloatUniform("baseAlpha", baseAlpha)
+            shader.setFloatUniform("baseAlpha", (baseAlpha * VisualTuning.glassAlpha).coerceIn(0f, 1f))
             shader.setFloatUniform("tintLighten", 0.07f)
             shader.setFloatUniform("stainColor", stainColor.red, stainColor.green, stainColor.blue)
             shader.setFloatUniform("stain", stain)

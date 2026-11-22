@@ -104,21 +104,21 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     // on long scrolls and exposed the navy root (his "growing blue bar").
     val drift = Modifier.graphicsLayer {
         scaleX = 1.1f; scaleY = 1.1f
-        rotationZ = tilt.x * 0.4f
-        translationY = -scrollPx.coerceIn(-220f, 220f) * 0.18f + tilt.y * 4.dp.toPx()
-        translationX = tilt.x * 6.dp.toPx()
+        rotationZ = (tilt.x * 0.4f) * VisualTuning.parallax
+        translationY = (-scrollPx.coerceIn(-220f, 220f) * 0.18f + tilt.y * 4.dp.toPx()) * VisualTuning.parallax
+        translationX = (tilt.x * 6.dp.toPx()) * VisualTuning.parallax
     }
     val contentDrift = Modifier.graphicsLayer {
-        translationY = -tilt.y * 6.dp.toPx()
-        translationX = -tilt.x * 10.dp.toPx()
+        translationY = (-tilt.y * 6.dp.toPx()) * VisualTuning.parallax
+        translationX = (-tilt.x * 10.dp.toPx()) * VisualTuning.parallax
     }
     // Sheets no longer drift: they are glass panels sampling the static
     // backdrop beneath them, and a translated lens over an untranslated
     // sample reads as a sampling bug. (This supersedes his earlier
     // negative-parallax-on-sheets ask - the glass IS the depth now.)
     val nearDrift = Modifier.graphicsLayer {
-        translationY = -tilt.y * 1.5f.dp.toPx()
-        translationX = -tilt.x * 2.dp.toPx()
+        translationY = (-tilt.y * 1.5f.dp.toPx()) * VisualTuning.parallax
+        translationX = (-tilt.x * 2.dp.toPx()) * VisualTuning.parallax
     }
 
     // Liquid glass backdrop: the WHOLE screen (bars included) is
@@ -142,7 +142,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     var dragIndex by remember { mutableStateOf<Float?>(null) }
     val slideIdx by animateFloatAsState(
         targetValue = dragIndex ?: selIdx.toFloat(),
-        animationSpec = if (dragIndex != null) snap() else tween(450, easing = EaseInOut),
+        animationSpec = if (dragIndex != null) snap() else tween(VisualTuning.animationMs.toInt(), easing = EaseInOut),
         label = "navSlide")
     val lo = kotlin.math.floor(slideIdx).toInt().coerceIn(0, navTabs.lastIndex)
     val hi = kotlin.math.ceil(slideIdx).toInt().coerceIn(0, navTabs.lastIndex)
@@ -152,8 +152,8 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     val pillH = 58.dp + 14.dp * profFactor
     val pillPad = 10.dp * (1f - profFactor) + 1.5.dp * profFactor
     val pillDrift = Modifier.graphicsLayer {
-        translationY = -tilt.y * 2.dp.toPx()
-        translationX = -tilt.x * 3.dp.toPx()
+        translationY = (-tilt.y * 2.dp.toPx()) * VisualTuning.parallax
+        translationX = (-tilt.x * 3.dp.toPx()) * VisualTuning.parallax
     }
     var navPos by remember { mutableStateOf(Offset.Zero) }
     var navSize by remember { mutableStateOf(IntSize(1, 1)) }
@@ -176,7 +176,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     Box(Modifier.fillMaxSize()) {
     val bgBlur = if (android.os.Build.VERSION.SDK_INT >= 31 && (anySheet || accountSheet || lessonSel != null))
         Modifier.graphicsLayer {
-            renderEffect = android.graphics.RenderEffect.createBlurEffect(20f, 20f, android.graphics.Shader.TileMode.CLAMP).asComposeRenderEffect()
+            renderEffect = android.graphics.RenderEffect.createBlurEffect(VisualTuning.sheetBlur.coerceAtLeast(0.1f), VisualTuning.sheetBlur.coerceAtLeast(0.1f), android.graphics.Shader.TileMode.CLAMP).asComposeRenderEffect()
         } else Modifier
     Column(Modifier.fillMaxSize().then(bgBlur).nestedScroll(scrollProbe).glassBackdrop(glassBackdrop, glassLayer, glassScope, 0.5f)) {
         Box(Modifier.weight(1f).padding(top = 64.dp)) {
@@ -268,10 +268,12 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         val itemCenterY = navY + 40.dp // items live in the fixed 80dp Row; navSize.height includes the gesture inset
         val profCenterY = avatarCenterY?.let { with(density) { it.toDp() } } ?: (itemCenterY - 16.dp)
         val centerY = itemCenterY + (profCenterY - itemCenterY) * profFactor
+        val profileMinWidth = 72.dp * profFactor
+        val lensWidth = maxOf(itemW - pillPad * 2, profileMinWidth)
         Box(
             Modifier
-                .offset(x = itemW * slideIdx + pillPad, y = centerY - pillH / 2)
-                .width(itemW - pillPad * 2)
+                .offset(x = itemW * (slideIdx + 0.5f) - lensWidth / 2, y = centerY - pillH / 2)
+                .width(lensWidth)
                 .height(pillH)
                 .shadow(10.dp, RoundedCornerShape(pillH / 2), clip = false, ambientColor = baseStain, spotColor = baseStain)
                 .then(pillDrift)
@@ -439,7 +441,7 @@ fun HomeworkTab(ui: UiState, vm: AppViewModel, onTap: (String, String) -> Unit) 
             }
             val dueLabel = when {
                 days == null -> "due ${h.due_date}"
-                kotlin.math.abs(days) > 730 -> "due ${h.due_date.take(10)}" // live API sometimes returns garbage years
+                kotlin.math.abs(days) > 730 -> "due ${h.due_date.take(10)}" // keep extreme dates readable
                 days < 0 -> "${-days}d overdue"
                 days == 0 -> "due today"
                 days == 1 -> "due tomorrow"
@@ -606,10 +608,15 @@ fun MoreTab(ui: UiState, vm: AppViewModel) {
                 if (ui.externalLinks != null) items += "Links"
                 if (ui.medical != null) items += "Medical"
                 if (ui.teachers != null) items += "Teachers"
+                items += "Customisation"
                 items.forEach { name ->
                     item {
                         Card(Modifier.fillMaxWidth().clickable { section = name }) {
                             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                if (name == "Customisation") {
+                                    PaintbrushIcon()
+                                    Spacer(Modifier.width(12.dp))
+                                }
                                 Text(name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                                 Text(">", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -618,6 +625,7 @@ fun MoreTab(ui: UiState, vm: AppViewModel) {
                 }
             }
         }
+        "Customisation" -> MoreSection(title = "Customisation", onBack = { section = null }) { CustomisationSection() }
         "Attendance" -> MoreSection(title = "Attendance", onBack = { section = null }) { AttendanceSection(ui) }
         "Notices" -> MoreSection(title = "Notices", onBack = { section = null }) { NoticesSection(ui, vm) }
         "Exams" -> MoreSection(title = "Exams", onBack = { section = null }) { ExamsSection(ui) }
@@ -951,8 +959,9 @@ fun SeatingPlanCanvas(plan: SeatingPlanDetail, learners: List<RegisterLearner>) 
         room.blackboard?.let { bb ->
             Box(
                 Modifier
-                    .offset(x = ((bb.x - 0.8) * s).dp, y = (bb.y * s).dp)
-                    .width((1.6 * s).dp).height(6.dp)
+                    .offset(x = (bb.x * s).dp, y = (bb.y * s).dp)
+                    .width(((if (room.width < 3 || room.height < 3) 2.0 else 2.5) * s).dp)
+                    .height(((if (room.width < 6 && room.height < 6) 0.1 else 0.2) * s).dp)
                     .graphicsLayer { rotationZ = bb.angle.toFloat() }
                     .background(Color(0xFF37474F))
             )
@@ -960,16 +969,21 @@ fun SeatingPlanCanvas(plan: SeatingPlanDetail, learners: List<RegisterLearner>) 
         room.tables.forEach { t ->
             val w = (if (t.type.contains("2")) 1.2 else 0.6) * s
             val h = 0.6 * s
+            // Vendor coordinates are the rotated bounding box's top-left.
+            // Compose rotates around the centre, so undo its half-difference.
+            val quarterTurn = ((t.angle.toInt() % 360) + 360) % 360 in listOf(90, 270)
+            val delta = if (quarterTurn) kotlin.math.abs(w - h) / 2 else 0.0
             Box(
                 Modifier
-                    .offset(x = (t.x * s).dp, y = (t.y * s).dp)
+                    .offset(x = (t.x * s - delta).dp, y = (t.y * s + delta).dp)
                     .width(w.dp).height(h.dp)
                     .graphicsLayer { rotationZ = t.angle.toFloat() }
                     .background(Color(0xFF90A4AE), MaterialTheme.shapes.small),
                 contentAlignment = Alignment.Center
             ) {
                 val label = listOfNotNull(t.left, t.right).mapNotNull { byId[it] }.joinToString(" ")
-                if (label.isNotBlank()) Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White)
+                if (label.isNotBlank()) Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White,
+                    modifier = Modifier.graphicsLayer { rotationZ = -t.angle.toFloat() })
             }
         }
     }

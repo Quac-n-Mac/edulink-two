@@ -1,2 +1,9 @@
 /target
 Cargo.lock.bak
+/.gradle/
+/build/
+/app/build/
+/local.properties
+*.jks
+*.keystore
+*.p12

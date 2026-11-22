@@ -45,7 +45,7 @@ fun TapFeedbackHost(content: @Composable () -> Unit) {
                 if (finger == null) break
                 if ((finger.position - down.position).getDistance() > viewConfiguration.touchSlop || event.changes.size > 1) dragged = true
                 if (!finger.pressed) {
-                    if (!dragged) {
+                    if (!dragged && VisualTuning.tapFeedback) {
                         point = finger.position
                         backdrop.captureVersion++
                         serial++

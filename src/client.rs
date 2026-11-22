@@ -396,6 +396,11 @@ impl<T: Transport> Client<T> {
     /// Raw JSON result for a read-only method, unmodelled surfaces.
     /// Only ever used with read methods; the crate has no write methods.
     pub async fn raw(&self, method: &str, params: Value) -> Result<Value> {
+        anyhow::ensure!(matches!(method,
+            methods::SEATING_PLANS | methods::SEATING_PLAN | methods::REGISTERS |
+            methods::REGISTER | methods::MEDICAL | methods::CATERING |
+            methods::DOCUMENTS | methods::EXTERNAL_LINKS | methods::REPORT_CARD |
+            methods::TEACHERS), "method is not in the read-only surface allowlist");
         let mut v = self.transport.call(method, params).await?;
         if let Some(obj) = v.as_object_mut() {
             obj.remove("success");

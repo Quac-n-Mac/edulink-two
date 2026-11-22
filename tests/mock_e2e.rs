@@ -64,3 +64,10 @@ async fn cache_roundtrip_and_staleness() {
     assert!(back.fresh_for(edulink_two::cache::TTL_HOMEWORK));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[tokio::test]
+async fn raw_surface_rejects_unknown_methods_locally() {
+    let client = Client::new(MockTransport::new(fixtures()), "mock.local", "tstudent42");
+    let err = client.raw("Unsupported.Method", serde_json::json!({})).await.unwrap_err();
+    assert!(err.to_string().contains("read-only surface allowlist"));
+}

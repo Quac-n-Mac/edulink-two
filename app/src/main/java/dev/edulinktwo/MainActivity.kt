@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.graphics.Color
 import androidx.core.view.WindowInsetsControllerCompat
 import dev.edulinktwo.ui.TapFeedbackHost
+import dev.edulinktwo.ui.VisualTuning
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.collectAsState
@@ -16,6 +17,7 @@ import dev.edulinktwo.ui.LoginScreen
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        VisualTuning.load(this)
         window.statusBarColor = Color.rgb(246, 247, 252)
         window.navigationBarColor = Color.rgb(246, 247, 252)
         window.decorView.setBackgroundColor(Color.rgb(246, 247, 252))
