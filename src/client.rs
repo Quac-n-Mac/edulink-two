@@ -3,7 +3,7 @@
 //! parallel (login, sync, TUI refresh) so every screen renders instantly.
 
 use crate::models::*;
-use crate::transport::Transport;
+use crate::transport::{HttpTransport, Transport};
 use anyhow::{Context, Result};
 use serde_json::json;
 use std::future::Future;
@@ -28,6 +28,61 @@ pub mod methods {
     pub const PERSONAL: &str = "EduLink.Personal";
     pub const INBOX: &str = "Communicator.Inbox";
     pub const OUTBOX: &str = "Communicator.Outbox";
+    /// Pre-login school resolution on the provisioning service.
+    pub const SCHOOL_FROM_CODE: &str = "School.FromCode";
+    /// Pre-login school metadata (name + crest) on the school's server.
+    pub const SCHOOL_DETAILS: &str = "EduLink.SchoolDetails";
+}
+
+/// A school resolved from its code/postcode, exactly like the stock
+/// app's login flow: School.FromCode on the provisioning service gives
+/// the API host and establishment id, then EduLink.Login runs there.
+pub struct SchoolInfo {
+    pub host: String,
+    pub school_id: i64,
+}
+
+/// Resolve a school code or postcode to its API host + establishment id.
+/// Public endpoint, no auth - the stock app calls it before credentials.
+pub async fn resolve_school(code: &str) -> Result<SchoolInfo> {
+    let t = HttpTransport::new("provisioning.edulinkone.com")?;
+    let v = t
+        .call(methods::SCHOOL_FROM_CODE, json!({"code": code.trim()}))
+        .await
+        .context("school lookup failed")?;
+    let school = v.get("school").context("no school in lookup response")?;
+    let server = school
+        .get("server")
+        .and_then(|s| s.as_str())
+        .context("school.server missing")?;
+    let host = server
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_end_matches("/api/")
+        .trim_end_matches('/')
+        .to_string();
+    let school_id = school
+        .get("school_id")
+        .and_then(|s| s.as_i64())
+        .context("school_id missing")?;
+    Ok(SchoolInfo { host, school_id })
+}
+
+/// School metadata for the credentials screen: name + base64 crest.
+/// Public endpoint, no auth - the stock app shows it before login.
+pub async fn school_details(host: &str, establishment_id: i64) -> Result<(String, Option<String>)> {
+    let t = HttpTransport::new(host)?;
+    let v = t
+        .call(
+            methods::SCHOOL_DETAILS,
+            json!({"establishment_id": establishment_id, "from_app": true, "format": 2}),
+        )
+        .await
+        .context("school details failed")?;
+    let est = v.get("establishment").cloned().unwrap_or(json!({}));
+    let name = est.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
+    let logo = est.get("logo").and_then(|l| l.as_str()).map(str::to_string);
+    Ok((name, logo))
 }
 
 pub struct Client<T: Transport> {
@@ -78,12 +133,12 @@ impl<T: Transport> Client<T> {
     /// Log in and immediately prefetch every main surface in parallel,
     /// so opening any section is instant. Returns the login data plus
     /// all surfaces with per-surface timings.
-    pub async fn login(&self, password: &str, learner_id: Option<&str>, date: &str) -> Result<(LoginData, Prefetch)> {
+    pub async fn login(&self, password: &str, establishment_id: i64, learner_id: Option<&str>, date: &str) -> Result<(LoginData, Prefetch)> {
         let params = json!({
             "username": self.username,
             "password": password,
-            "from_app": false,
-            "ui_format": "2",
+            "establishment_id": establishment_id,
+            "from_app": true,
             "fcm_token_old": "none",
             "format": 2,
         });
