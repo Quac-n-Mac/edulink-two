@@ -302,15 +302,26 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     LaunchedEffect(Unit) {
         snapshotFlow { pagerState.isScrollInProgress }.collect { if (!it) glassBackdrop.captureVersion++ }
     }
-    // Live glass: recapture continuously, capped ~30fps so the GPU keeps
-    // headroom for the UI itself. The capture serializes via
-    // captureInFlight, so the bar tracks real content at the fastest
-    // sustainable rate instead of stale ~1Hz updates.
+    // Live glass, adaptive: recapture at ~15fps while content is moving
+    // (scroll, pager slide, tilt parallax), then a 2fps heartbeat so the
+    // glass never looks stale. Full-rate full-res capture made the UI
+    // laggy - smoothness beats resolution.
     LaunchedEffect(Unit) {
+        var lastCap = 0L
+        var seenScroll = scrollPx
+        var seenSlide = slideIdx
+        var seenTiltX = tilt.x
+        var seenTiltY = tilt.y
+        var lastMove = 0L
         while (true) {
             withFrameNanos { }
-            glassBackdrop.captureVersion++
-            delay(33)
+            val now = System.nanoTime()
+            if (scrollPx != seenScroll || slideIdx != seenSlide || tilt.x != seenTiltX || tilt.y != seenTiltY) {
+                seenScroll = scrollPx; seenSlide = slideIdx; seenTiltX = tilt.x; seenTiltY = tilt.y
+                lastMove = now
+            }
+            val interval = if (now - lastMove < 400_000_000L) 66_000_000L else 500_000_000L
+            if (now - lastCap >= interval) { glassBackdrop.captureVersion++; lastCap = now }
         }
     }
 
@@ -326,7 +337,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     // No RenderEffect background blur behind sheets: the effect's own
     // offscreen pass produced magenta/green pixel garbage on his GPU, and
     // the sheet glass frosts its own region anyway (scrim still dims).
-    Column(Modifier.fillMaxSize().nestedScroll(scrollProbe).glassBackdrop(glassBackdrop, glassLayer, glassScope, 1.0f)) {
+    Column(Modifier.fillMaxSize().nestedScroll(scrollProbe).glassBackdrop(glassBackdrop, glassLayer, glassScope, 0.6f)) {
         Box(Modifier.fillMaxSize()) {
         // Layer 1 (deep): barely-there gradient + faint doodle texture.
         Box(
