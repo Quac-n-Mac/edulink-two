@@ -1,0 +1,37 @@
+[package]
+name = "edulink-two"
+version = "0.1.0"
+edition = "2021"
+description = "Edulink Two - a fast read-only Edulink One client (CLI + TUI)"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "edulink_two"
+path = "src/lib.rs"
+
+[[bin]]
+name = "edulink"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.28"
+directories = "6"
+ratatui = "0.29"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+rpassword = "7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt", "fs", "time"] }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+opt-level = 3
+panic = "abort"
+strip = true
+
+[workspace]
+members = [".", "bridge"]
