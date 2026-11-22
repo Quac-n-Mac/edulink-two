@@ -198,6 +198,14 @@ private fun SchoolCodeStep(
                 .padding(horizontal = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Image(
+                painter = painterResource(R.drawable.two_logo),
+                contentDescription = "Edulink Two",
+                modifier = Modifier
+                    .size(110.dp)
+                    .clip(RoundedCornerShape(24.dp))
+            )
+            Spacer(Modifier.height(24.dp))
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
