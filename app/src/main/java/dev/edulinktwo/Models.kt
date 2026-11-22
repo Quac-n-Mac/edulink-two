@@ -380,3 +380,55 @@ data class Teacher(
 }
 @Serializable
 data class TeachersData(val teachers: List<Teacher> = emptyList())
+
+// ----- Extras wave 2: forms, absences, detentions, moments, assessment, report card -----
+@Serializable
+data class FormEntry(val id: Int = 0, val subject: String = "", val created: String = "", val due: String = "", val submitted: String? = null)
+@Serializable
+data class FormsData(val forms: List<FormEntry> = emptyList())
+@Serializable
+data class FormField(val id: Int = 0, val type: String = "", val required: Boolean = false, val content: JsonElement? = null)
+@Serializable
+data class FormBody(val id: Int = 0, val subject: String = "", val created: String = "", val due: String = "", val active: Boolean = true, val recipient_type: String = "", val fields: List<FormField> = emptyList())
+@Serializable
+data class FormDetailData(val form: FormBody = FormBody())
+@Serializable
+data class AbsenceMarks(val am: String = "", val pm: String = "")
+@Serializable
+data class AbsenceLog(val time: String = "", val message: String = "", val employee_id: String = "")
+@Serializable
+data class AbsenceEntry(val learner_id: String = "", val marks: AbsenceMarks = AbsenceMarks(), val log: List<AbsenceLog> = emptyList())
+@Serializable
+data class AbsencesData(val absences: List<AbsenceEntry> = emptyList())
+@Serializable
+data class DetentionSessionEntry(val id: Int = 0, val date: String = "", val description: String = "", val location: String = "", val start_time: String = "", val end_time: String = "", val num_of_detainees: Int? = null)
+@Serializable
+data class DetentionsData(val sessions: List<DetentionSessionEntry> = emptyList())
+@Serializable
+data class DetentionStudent(val id: String = "", val attended: String = "", val incident_date: String = "", val incident_type: String = "", val staff_comments: String = "")
+@Serializable
+data class DetentionSessionBody(val id: Int = 0, val date: String = "", val description: String = "", val location: String = "", val start_time: String = "", val end_time: String = "", val students: List<DetentionStudent> = emptyList())
+@Serializable
+data class DetentionDetailData(val session: DetentionSessionBody = DetentionSessionBody())
+@Serializable
+data class MomentAttachment(val filename: String = "", val mime_type: String = "", val url: String = "")
+@Serializable
+data class Moment(val id: String = "", val text: String = "", val created: String = "", val attachments: List<MomentAttachment> = emptyList())
+@Serializable
+data class MomentsData(val moments: List<Moment> = emptyList())
+@Serializable
+data class AssessmentCell(val name: String = "", val content: JsonElement? = null, val css: String = "", val visible: Boolean = true)
+@Serializable
+data class AssessmentGrid(val name: String = "", val applies_this_year: Boolean = false, val header: String = "", val footer: String = "", val resultstable: List<List<AssessmentCell>> = emptyList())
+@Serializable
+data class AssessmentData(val assessment: List<AssessmentGrid> = emptyList())
+@Serializable
+data class ReportCardTarget(val achieved: Boolean = false)
+@Serializable
+data class ReportCardClass(val comments: String = "", val initials: String = "", val label: String = "", val targets: List<ReportCardTarget> = emptyList())
+@Serializable
+data class ReportCardDay(val date: String = "", val classes: List<ReportCardClass> = emptyList())
+@Serializable
+data class ReportCardBody(val start_date: String = "", val end_date: String = "", val comments: String = "", val active: Boolean = true, val current: Boolean = false, val days: List<ReportCardDay> = emptyList())
+@Serializable
+data class ReportCardData(val card: ReportCardBody = ReportCardBody())

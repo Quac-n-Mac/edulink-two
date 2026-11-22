@@ -127,6 +127,10 @@ half4 main(float2 fragCoord) {
 class GlassBackdrop {
     var bitmap by mutableStateOf<ImageBitmap?>(null)
     var scale by mutableStateOf(0.5f)
+    /** Downscaled copy of the capture: sampling it bilinearly IS the blur,
+     * so bars get real frost without multi-tap ghosting. */
+    var frost by mutableStateOf<ImageBitmap?>(null)
+    var frostScale by mutableStateOf(1f)
     /** window position of the captured root's top-left, px */
     var rootWinPos by mutableStateOf(Offset.Zero)
     /** bump to request a fresh capture */
@@ -157,6 +161,11 @@ fun Modifier.glassBackdrop(
             try {
             val bmp = layer.toImageBitmap()
             if (v.toLong() >= backdrop.capturedVersion) {
+                val src = bmp.asAndroidBitmap()
+                val fw = (src.width / 8).coerceAtLeast(1)
+                val fh = (src.height / 8).coerceAtLeast(1)
+                backdrop.frost = android.graphics.Bitmap.createScaledBitmap(src, fw, fh, true).asImageBitmap()
+                backdrop.frostScale = fw.toFloat() / src.width.toFloat()
                 backdrop.scale = 1f
                 backdrop.bitmap = bmp
             }
@@ -178,6 +187,7 @@ fun Modifier.liquidGlass(
     baseAlpha: Float = 0.55f,
     stainColor: Color = Color.Transparent,
     stain: Float = 0f,
+    frosted: Boolean = false,
     lightDir: () -> Offset = { Offset(-0.55f, -0.83f) },
 ): Modifier {
     // Frosted fallback when there is no usable backdrop (old API or no
@@ -206,7 +216,10 @@ fun Modifier.liquidGlass(
     return this
         .onGloballyPositioned { pos = it.positionInWindow() - backdrop.rootWinPos }
         .drawBehind {
-            val bmp = backdrop.bitmap ?: return@drawBehind
+            val sharp = backdrop.bitmap ?: return@drawBehind
+            val useFrost = frosted && backdrop.frost != null
+            val bmp = if (useFrost) backdrop.frost!! else sharp
+            val texScale = if (useFrost) backdrop.frostScale else backdrop.scale
             shader.setInputBuffer(
                 "backdrop",
                 android.graphics.BitmapShader(
@@ -215,12 +228,13 @@ fun Modifier.liquidGlass(
             )
             shader.setFloatUniform("resolution", size.width, size.height)
             shader.setFloatUniform("surfacePos", pos.x, pos.y)
-            shader.setFloatUniform("glassScale", backdrop.scale)
+            shader.setFloatUniform("glassScale", texScale)
             shader.setFloatUniform("cornerRadius", cornerRadius.toPx())
             shader.setFloatUniform("edgeWidth", edgeWidth.toPx())
             shader.setFloatUniform("refrStrength", refrStrength.toPx() * VisualTuning.refraction)
             shader.setFloatUniform("dispersion", 0.45f)
-            shader.setFloatUniform("blurRadius", blurRadius.toPx())
+            // blur taps are in texture texels: scale them with the bound texture
+            shader.setFloatUniform("blurRadius", blurRadius.toPx() * texScale)
             val ld = lightDir()
             shader.setFloatUniform("lightDir", ld.x, ld.y)
             shader.setFloatUniform("baseAlpha", (baseAlpha * VisualTuning.glassAlpha).coerceIn(0f, 1f))

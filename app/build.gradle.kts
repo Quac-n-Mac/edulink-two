@@ -13,8 +13,8 @@ android {
         applicationId = "dev.edulinktwo"
         minSdk = 26
         targetSdk = 34
-        versionCode = 27
-        versionName = "0.6.4"
+        versionCode = 28
+        versionName = "0.6.5"
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 
@@ -53,4 +53,5 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.5")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.2")
     implementation("androidx.core:core-ktx:1.13.1")
+    implementation("io.coil-kt:coil-compose:2.6.0")
 }

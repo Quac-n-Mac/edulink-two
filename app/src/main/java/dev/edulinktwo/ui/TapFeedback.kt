@@ -18,50 +18,56 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
 import kotlin.math.roundToInt
 
-/** Observes without consuming input. Only completed taps produce a bubble. */
+private data class Bubble(val id: Int, val pos: Offset)
+
+/** Observes without consuming input. Taps AND drags leave fading bubbles:
+ * one where the finger lands, then a trail that follows every drag. */
 @Composable
 fun TapFeedbackHost(content: @Composable () -> Unit) {
     val backdrop = remember { GlassBackdrop() }
     val layer = rememberGraphicsLayer()
     val scope = rememberCoroutineScope()
-    var point by remember { mutableStateOf<Offset?>(null) }
-    var serial by remember { mutableIntStateOf(0) }
-    val alpha = remember { Animatable(0f) }
+    var bubbles by remember { mutableStateOf(listOf<Bubble>()) }
+    var nextId by remember { mutableIntStateOf(0) }
     val radius = with(LocalDensity.current) { 24.dp.toPx() }
-    LaunchedEffect(serial) {
-        if (serial > 0) {
-            alpha.snapTo(1f)
-            alpha.animateTo(0f, tween(200))
-        }
-    }
+    val trailStep = with(LocalDensity.current) { 56.dp.toPx() }
     Box(Modifier.fillMaxSize().pointerInput(Unit) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-            var dragged = false
-            var finished = false
-            while (!finished) {
+            if (VisualTuning.tapFeedback) {
+                bubbles = bubbles + Bubble(nextId, down.position)
+                nextId++
+                backdrop.captureVersion++
+            }
+            var lastSpawn = down.position
+            var active = true
+            while (active) {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
-                val finger = event.changes.firstOrNull { it.id == down.id }
-                if (finger == null) break
-                if ((finger.position - down.position).getDistance() > viewConfiguration.touchSlop || event.changes.size > 1) dragged = true
-                if (!finger.pressed) {
-                    if (!dragged && VisualTuning.tapFeedback) {
-                        point = finger.position
-                        backdrop.captureVersion++
-                        serial++
+                val finger = event.changes.firstOrNull { it.id == down.id } ?: break
+                if (finger.pressed) {
+                    if (VisualTuning.tapFeedback && (finger.position - lastSpawn).getDistance() > trailStep) {
+                        bubbles = bubbles + Bubble(nextId, finger.position)
+                        nextId++
+                        lastSpawn = finger.position
                     }
-                    finished = true
-                }
+                } else active = false
             }
         }
     }) {
         Box(Modifier.fillMaxSize().glassBackdrop(backdrop, layer, scope)) { content() }
-        point?.let { p ->
-            Box(Modifier.offset { IntOffset((p.x - radius).roundToInt(), (p.y - radius).roundToInt()) }
-                .size(48.dp)
-                .graphicsLayer { this.alpha = alpha.value }
-                .liquidGlass(backdrop, cornerRadius = 24.dp, edgeWidth = 7.dp,
-                    refrStrength = 5.dp, baseAlpha = 0.55f, stainColor = Color.White, stain = 0.3f))
+        bubbles.forEach { b ->
+            key(b.id) {
+                val alpha = remember { Animatable(1f) }
+                LaunchedEffect(Unit) {
+                    alpha.animateTo(0f, tween(if (VisualTuning.systemReducedMotion) 0 else 220))
+                    bubbles = bubbles.filter { it.id != b.id }
+                }
+                Box(Modifier.offset { IntOffset((b.pos.x - radius).roundToInt(), (b.pos.y - radius).roundToInt()) }
+                    .size(48.dp)
+                    .graphicsLayer { this.alpha = alpha.value }
+                    .liquidGlass(backdrop, cornerRadius = 24.dp, edgeWidth = 7.dp,
+                        refrStrength = 5.dp, baseAlpha = 0.55f, stainColor = Color.White, stain = 0.3f))
+            }
         }
     }
 }

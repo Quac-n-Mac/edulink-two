@@ -1,17 +1,14 @@
 package dev.edulinktwo.ui
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.EaseInOut
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.snap
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.math.floor
 import kotlin.math.roundToInt
-import androidx.compose.animation.togetherWith
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -55,6 +52,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.platform.LocalDensity
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import dev.edulinktwo.*
@@ -142,10 +140,23 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     )
     val selIdx = navTabs.indexOf(ui.tab).coerceAtLeast(0)
     var dragIndex by remember { mutableStateOf<Float?>(null) }
-    val slideIdx by animateFloatAsState(
-        targetValue = dragIndex ?: selIdx.toFloat(),
-        animationSpec = if (dragIndex != null) snap() else tween(if (VisualTuning.systemReducedMotion) 0 else VisualTuning.animationMs.toInt(), easing = EaseInOut),
-        label = "navSlide")
+    // Finger-tracked page swipes between tabs: the pager owns the content
+    // position and the nav pill reads it directly, so the pill glides with
+    // the page under the finger. The pager direction-locks horizontally, so
+    // vertical list scrolling never flips a page. Tab taps ride the same
+    // pager animation, keeping both paths in one motion system.
+    val pagerState = rememberPagerState(initialPage = selIdx, pageCount = { navTabs.size })
+    LaunchedEffect(pagerState.settledPage) {
+        val t = navTabs[pagerState.settledPage]
+        if (t != ui.tab) vm.selectTab(t)
+    }
+    LaunchedEffect(ui.tab) {
+        val idx = navTabs.indexOf(ui.tab).coerceAtLeast(0)
+        if (idx != pagerState.settledPage) {
+            pagerState.animateScrollToPage(idx, animationSpec = tween(if (VisualTuning.systemReducedMotion) 0 else VisualTuning.animationMs.toInt(), easing = EaseInOut))
+        }
+    }
+    val slideIdx = dragIndex ?: (pagerState.currentPage + pagerState.currentPageOffsetFraction)
     val lo = kotlin.math.floor(slideIdx).toInt().coerceIn(0, navTabs.lastIndex)
     val hi = kotlin.math.ceil(slideIdx).toInt().coerceIn(0, navTabs.lastIndex)
     val baseStain = lerp(navStains[lo], navStains[hi], slideIdx - lo)
@@ -188,7 +199,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             Modifier
                 .fillMaxSize()
                 .then(drift)
-                .background(Brush.verticalGradient(listOf(Color(0xFFF6F8FA), Color(0xFFE1E8F0))))
+                .background(Brush.verticalGradient(listOf(ThemeStore.current.bgTop, ThemeStore.current.bgBottom)))
         )
         Image(
             painter = painterResource(R.drawable.login_bg),
@@ -203,13 +214,10 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             onRefresh = { vm.refresh() },
             modifier = Modifier.fillMaxSize().padding(top = 64.dp + statusTop).then(contentDrift)
         ) {
-            // Fast transitions: 120ms, no slow fades.
-            AnimatedContent(
-                targetState = ui.tab,
-                transitionSpec = { fadeIn(tween(FAST_MS)) togetherWith fadeOut(tween(FAST_MS)) },
-                label = "tab"
-            ) { tab ->
-                when (tab) {
+            // Swipe between tabs: the page tracks the finger and snaps when
+            // it lands. Horizontal only - vertical scrolls stay scrolls.
+            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+                when (navTabs[page]) {
                     Tab.HOMEWORK -> HomeworkTab(ui, vm) { id, src ->
                         detailError = null
                         detailLoading = true
@@ -220,9 +228,9 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                         }
                     }
                     Tab.TIMETABLE -> TimetableTab(ui) { lessonSel = it }
+                    Tab.PROFILE -> ProfileTab(ui, vm)
                     Tab.POINTS -> PointsTab(ui)
                     Tab.MORE -> MoreTab(ui, vm)
-                    Tab.PROFILE -> ProfileTab(ui, vm)
                 }
             }
         }
@@ -233,11 +241,11 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     // so the raised profile avatar escapes the bar.
     Box(Modifier.align(Alignment.BottomCenter).then(nearDrift)
             .shadow(barElev, clip = false, ambientColor = softAmbient, spotColor = softSpot)
-            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 4.dp, refrStrength = 3.dp, blurRadius = 14.dp, baseAlpha = 0.55f, stainColor = Color.White, stain = 0.5f)
+            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 4.dp, refrStrength = 3.dp, blurRadius = 14.dp, baseAlpha = 0.55f, stainColor = ThemeStore.current.bar, stain = 0.5f, frosted = true)
             .navigationBarsPadding()
             .onGloballyPositioned { navPos = it.positionInRoot(); navSize = it.size }) {
             CompositionLocalProvider(LocalRippleConfiguration provides null) {
-            Row(Modifier.fillMaxWidth().height(80.dp).pointerInput(navSize.width) {
+            Row(Modifier.fillMaxWidth().height(64.dp).pointerInput(navSize.width) {
                 val itemPx = navSize.width.toFloat() / navTabs.size
                 detectHorizontalDragGestures(
                     onDragStart = { at -> dragIndex = (at.x / itemPx - 0.5f).coerceIn(0f, navTabs.lastIndex.toFloat()) },
@@ -246,17 +254,31 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                         dragIndex = ((dragIndex ?: selIdx.toFloat()) + amount / itemPx).coerceIn(0f, navTabs.lastIndex.toFloat())
                     },
                     onDragEnd = {
-                        dragIndex?.let { vm.selectTab(navTabs[it.roundToInt().coerceIn(0, navTabs.lastIndex)]) }
-                        dragIndex = null
+                        dragIndex?.let { di ->
+                            val last = navTabs.lastIndex
+                            val target = di.roundToInt().coerceIn(0, last)
+                            val whole = floor(di).toInt().coerceIn(0, last)
+                            val frac = di - whole
+                            // Hand the pill's exact spot to the pager so the
+                            // release animates from where the finger left it.
+                            glassScope.launch {
+                                if (frac <= 0.5f) pagerState.scrollToPage(whole, frac)
+                                else pagerState.scrollToPage((whole + 1).coerceAtMost(last), frac - 1f)
+                                dragIndex = null
+                                pagerState.animateScrollToPage(target, animationSpec = tween(if (VisualTuning.systemReducedMotion) 0 else VisualTuning.animationMs.toInt(), easing = EaseInOut))
+                            }
+                            vm.selectTab(navTabs[target])
+                        }
                     },
                     onDragCancel = { dragIndex = null }
                 )
             }) {
                 GlassNavItem(ui.tab == Tab.HOMEWORK, { vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, "Homework", Modifier.weight(1f))
                 GlassNavItem(ui.tab == Tab.TIMETABLE, { vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, "Timetable", Modifier.weight(1f))
-                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    ProfileNavButton(ui, vm, onTap = { vm.selectTab(Tab.PROFILE) }, onLong = { accountSheet = true }, onPlaced = { avatarCenterY = it })
-                }
+                // The avatar no longer lives in the bar (its glass layer
+                // clipped the protrusion 5 rounds running): this reserves the
+                // slot's width; the avatar itself is the overlay below.
+                Box(modifier = Modifier.weight(1f))
                 GlassNavItem(ui.tab == Tab.POINTS, { vm.selectTab(Tab.POINTS) }, { Icon(Icons.Default.Star, null) }, "Points", Modifier.weight(1f))
                 GlassNavItem(ui.tab == Tab.MORE, { vm.selectTab(Tab.MORE) }, { Icon(Icons.Default.Menu, null) }, "More", Modifier.weight(1f))
             }
@@ -272,7 +294,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     if (navSize.width > 1) {
         val itemW = with(density) { (navSize.width / navTabs.size).toDp() }
         val navY = with(density) { navPos.y.toDp() }
-        val itemCenterY = navY + 40.dp // items live in the fixed 80dp Row; navSize.height includes the gesture inset
+        val itemCenterY = navY + 32.dp // items live in the fixed 64dp Row; navSize.height includes the gesture inset
         val profCenterY = avatarCenterY?.let { with(density) { it.toDp() } } ?: (itemCenterY - 16.dp)
         val centerY = itemCenterY + (profCenterY - itemCenterY) * profFactor
         val profileMinWidth = 72.dp * profFactor
@@ -288,6 +310,21 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         )
     }
 
+    // The avatar as a TOP-LEVEL overlay (same pattern as the pill): no
+    // ancestor can clip it, so the protrusion finally renders. Its centre
+    // sits 16dp below the bar's top edge (64dp Row, -16dp lift).
+    if (navSize.width > 1) {
+        val itemW2 = with(density) { (navSize.width / navTabs.size).toDp() }
+        val navY2 = with(density) { navPos.y.toDp() }
+        Box(
+            Modifier
+                .offset(x = itemW2 * 2.5f - 33.dp, y = navY2 + 16.dp - 33.dp)
+                .size(66.dp)
+        ) {
+            ProfileNavButton(ui, vm, onTap = { vm.selectTab(Tab.PROFILE) }, onLong = { accountSheet = true }, onPlaced = { avatarCenterY = it })
+        }
+    }
+
     // Top bar as a liquid-glass panel floating over the content: it
     // refracts the parallax background drifting beneath it.
     TopAppBar(
@@ -295,7 +332,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             .align(Alignment.TopCenter)
             .then(nearDrift)
             .shadow(barElev, clip = false, ambientColor = softAmbient, spotColor = softSpot)
-            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 5.dp, refrStrength = 5.dp, blurRadius = 4.dp, baseAlpha = 0.65f)
+            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 5.dp, refrStrength = 5.dp, blurRadius = 4.dp, baseAlpha = 0.65f, stainColor = ThemeStore.current.bar, stain = 0.25f, frosted = true)
             .statusBarsPadding(),
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         title = {
@@ -319,7 +356,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             onDismissRequest = { detail = null; detailLoading = false; detailError = null },
             containerColor = Color.Transparent
         ) {
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f).padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f, frosted = true).padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
                 when {
                     detailLoading -> Text("Loading...", style = MaterialTheme.typography.bodyMedium)
                     detail == null -> Text(detailError ?: "could not load homework", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
@@ -366,13 +403,13 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
 
     lessonSel?.let { lesson ->
         ModalBottomSheet(onDismissRequest = { lessonSel = null }, containerColor = Color.Transparent) {
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f)) { LessonSheet(ui, vm, lesson) }
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f, frosted = true)) { LessonSheet(ui, vm, lesson) }
         }
     }
 
     if (accountSheet) {
         ModalBottomSheet(onDismissRequest = { accountSheet = false }, containerColor = Color.Transparent) {
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f).padding(bottom = 32.dp)) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f, frosted = true).padding(bottom = 32.dp)) {
                 Text("Profiles", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
                 ui.accounts.forEach { a ->
                     ListItem(
@@ -407,7 +444,6 @@ fun ProfileNavButton(ui: UiState, vm: AppViewModel, onTap: () -> Unit, onLong: (
     }
     Box(
         modifier = Modifier
-            .offset(y = (-16).dp)
             .onGloballyPositioned { onPlaced(it.positionInRoot().y + it.size.height / 2f) }
             .size(66.dp)
             .clip(CircleShape)
@@ -618,7 +654,9 @@ fun MoreTab(ui: UiState, vm: AppViewModel) {
     when (section) {
         null -> {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                val items = mutableListOf("Attendance", "Notices", "Exams", "Calendar", "Clubs")
+                val hasReportCard = remember { vm.hasCached("reportcard") }
+                val items = mutableListOf("Theme", "Attendance", "Notices", "Exams", "Calendar", "Clubs", "Forms", "Absences", "Detentions", "Moments", "Assessment")
+                if (hasReportCard) items += "Report Card"
                 if (ui.inbox != null || ui.outbox != null) items += "Messages"
                 if (ui.registers != null) items += "Registers"
                 if (ui.seatingPlans != null) items += "Seating Plans"
@@ -638,6 +676,10 @@ fun MoreTab(ui: UiState, vm: AppViewModel) {
                                     PaintbrushIcon()
                                     Spacer(Modifier.width(12.dp))
                                 }
+                                if (name == "Theme") {
+                                    PaletteIcon()
+                                    Spacer(Modifier.width(12.dp))
+                                }
                                 Text(name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                                 Text(">", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -646,6 +688,13 @@ fun MoreTab(ui: UiState, vm: AppViewModel) {
                 }
             }
         }
+        "Theme" -> MoreSection(title = "Theme", onBack = { section = null }) { ThemeSection() }
+        "Forms" -> MoreSection(title = "Forms", onBack = { section = null }) { FormsSection(vm) }
+        "Absences" -> MoreSection(title = "Absences", onBack = { section = null }) { AbsencesSection(vm) }
+        "Detentions" -> MoreSection(title = "Detentions", onBack = { section = null }) { DetentionsSection(vm) }
+        "Moments" -> MoreSection(title = "Moments", onBack = { section = null }) { MomentsSection(vm) }
+        "Assessment" -> MoreSection(title = "Assessment", onBack = { section = null }) { AssessmentSection(vm) }
+        "Report Card" -> MoreSection(title = "Report Card", onBack = { section = null }) { ReportCardSection(vm) }
         "Customisation" -> MoreSection(title = "Customisation", onBack = { section = null }) { CustomisationSection() }
         "Attendance" -> MoreSection(title = "Attendance", onBack = { section = null }) { AttendanceSection(ui) }
         "Notices" -> MoreSection(title = "Notices", onBack = { section = null }) { NoticesSection(ui, vm) }
@@ -668,7 +717,7 @@ private fun MoreSection(title: String, onBack: () -> Unit, content: @Composable 
     val progress = remember(title) { Animatable(0f) }
     LaunchedEffect(title) {
         progress.snapTo(0f)
-        progress.animateTo(1f, tween(if (VisualTuning.systemReducedMotion) 0 else 1000, easing = EaseInOut))
+        progress.animateTo(1f, tween(if (VisualTuning.systemReducedMotion) 0 else 500, easing = EaseInOut))
     }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1071,6 +1120,8 @@ private fun RegistersSection(ui: UiState, vm: AppViewModel) {
     var picked by remember { mutableStateOf<RegisterEntry?>(null) }
     var detail by remember { mutableStateOf<RegisterDetail?>(null) }
     var err by remember { mutableStateOf<String?>(null) }
+    // Back walks one level: open register -> register list, not out to More.
+    BackHandler(enabled = picked != null) { picked = null; detail = null }
     if (picked == null) {
         regs.forEach { r ->
             Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
@@ -1100,6 +1151,8 @@ private fun SeatingPlansSection(ui: UiState, vm: AppViewModel) {
     var picked by remember { mutableStateOf<SeatingPlanEntry?>(null) }
     var detail by remember { mutableStateOf<SeatingPlanDetail?>(null) }
     var err by remember { mutableStateOf<String?>(null) }
+    // Back walks one level: open plan -> plan picker, not out to More.
+    BackHandler(enabled = picked != null) { picked = null; detail = null }
     if (picked == null) {
         plans.forEach { p ->
             Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {

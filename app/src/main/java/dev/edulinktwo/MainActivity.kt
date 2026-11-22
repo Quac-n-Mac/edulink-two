@@ -5,6 +5,7 @@ import android.graphics.Color
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.WindowInsetsControllerCompat
 import dev.edulinktwo.ui.TapFeedbackHost
+import dev.edulinktwo.ui.ThemeStore
 import dev.edulinktwo.ui.VisualTuning
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,6 +24,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         VisualTuning.load(this)
+        ThemeStore.load(this)
         enableEdgeToEdge()
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT

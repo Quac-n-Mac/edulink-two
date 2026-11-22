@@ -324,6 +324,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Wave-2 extras: the bridge is cache-first with a TTL and serves the
+     * vendor fixtures in demo mode, so every call goes through fetchRaw.
+     * Errors surface the server's own text, never a guess. */
+    private fun <T> wave2(cache: String, method: String, params: String, decode: (String?) -> T?, onDone: (T?, String?) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val raw = runCatching { RustBridge.nativeFetchRaw(stateDir, cacheDir, cache, method, params) }.getOrNull()
+            val d = decode(raw)
+            val err = if (d == null) {
+                raw?.let { runCatching { json.parseToJsonElement(it).jsonObject["error"]?.jsonPrimitive?.content }.getOrNull() }
+                    ?: lastDecodeError ?: "fetch failed (no response)"
+            } else null
+            withContext(Dispatchers.Main) { onDone(d, err) }
+        }
+    }
+
+    fun forms(onDone: (FormsData?, String?) -> Unit) = wave2("forms", "EduLink.Forms", "{\"format\":2}", { decodeSurface<FormsData>(it).first }, onDone)
+    fun formDetail(id: Int, onDone: (FormDetailData?, String?) -> Unit) = wave2("form-$id", "EduLink.Form", "{\"form_id\":$id,\"format\":2}", { decodeSurface<FormDetailData>(it).first }, onDone)
+    fun absences(onDone: (AbsencesData?, String?) -> Unit) = wave2("absences", "EduLink.AbsenceManagement", "{\"format\":2}", { decodeSurface<AbsencesData>(it).first }, onDone)
+    fun detentions(onDone: (DetentionsData?, String?) -> Unit) = wave2("detentions", "EduLink.DetentionSessions", "{\"format\":2}", { decodeSurface<DetentionsData>(it).first }, onDone)
+    fun detentionDetail(id: Int, onDone: (DetentionDetailData?, String?) -> Unit) = wave2("detention-$id", "EduLink.DetentionSession", "{\"detention_session_id\":$id,\"format\":2}", { decodeSurface<DetentionDetailData>(it).first }, onDone)
+    fun moments(onDone: (MomentsData?, String?) -> Unit) = wave2("moments", "EduLink.Moments", "{\"limit\":30}", { decodeSurface<MomentsData>(it).first }, onDone)
+    fun assessment(onDone: (AssessmentData?, String?) -> Unit) = wave2("assessment", "EduLink.AssessmentGrids", "{\"format\":2}", { decodeSurface<AssessmentData>(it).first }, onDone)
+    fun hasCached(name: String): Boolean = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, name) }.getOrNull() != null
+
+    /** Report card is teacher-side on real logins; demo caches it, so it is
+     * read from cache only and the menu entry is gated on hasCached. */
+    fun reportCard(onDone: (ReportCardData?, String?) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val raw = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "reportcard") }.getOrNull()
+            val (d, _) = decodeSurface<ReportCardData>(raw)
+            withContext(Dispatchers.Main) { onDone(d, if (d == null) "no report card cached" else null) }
+        }
+    }
+
     /** Detail fetch; second callback value is the REAL error when it fails, never a guess. */
     fun homeworkDetail(id: String, source: String = "EduLink", onDone: (HomeworkDetail?, String?) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
