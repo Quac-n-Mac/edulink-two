@@ -55,6 +55,7 @@ jobs:
 
       - name: Build APK (signed release if keystore present, else debug)
         run: |
+          chmod +x gradlew
           if [ -f /tmp/keystore.p12 ]; then
             ./gradlew :app:assembleRelease \
               -Pandroid.injected.signing.store.file=/tmp/keystore.p12 \
