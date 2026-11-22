@@ -67,7 +67,7 @@ import dev.edulinktwo.*
 import dev.edulinktwo.R
 import java.time.LocalDate
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(ui: UiState, vm: AppViewModel) {
     var accountSheet by remember { mutableStateOf(false) }
@@ -271,7 +271,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
                             val ch = event.changes.firstOrNull { it.id == down.id } ?: break
                             if (!ch.pressed) break
-                            val dx = ch.positionChange().x
+                            val dx = ch.position.x - ch.previousPosition.x
                             if (dx == 0f) continue
                             val atStart = pagerState.currentPage == 0 && pagerState.currentPageOffsetFraction >= 0f
                             val atEnd = pagerState.currentPage == navTabs.lastIndex && pagerState.currentPageOffsetFraction <= 0f

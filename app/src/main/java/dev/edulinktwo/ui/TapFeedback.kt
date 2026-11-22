@@ -46,10 +46,11 @@ fun TapFeedbackHost(content: @Composable () -> Unit) {
                 val finger = event.changes.firstOrNull { it.id == down.id } ?: break
                 if (finger.pressed) {
                     if (VisualTuning.tapFeedback && (finger.position - lastSpawn).getDistance() > trailStep) {
-                        val ch = finger.positionChange()
-                        val sp = kotlin.math.sqrt(ch.x * ch.x + ch.y * ch.y)
+                        val dx = finger.position.x - finger.previousPosition.x
+                        val dy = finger.position.y - finger.previousPosition.y
+                        val sp = kotlin.math.hypot(dx, dy)
                         val amt = (sp / 30f).coerceIn(0f, 1f)
-                        val ang = if (amt > 0f) (kotlin.math.atan2(ch.y, ch.x) * 180f / kotlin.math.PI).toFloat() else 0f
+                        val ang = if (amt > 0f) Math.toDegrees(kotlin.math.atan2(dy.toDouble(), dx.toDouble())).toFloat() else 0f
                         bubbles = bubbles + Bubble(nextId, finger.position, amt, ang)
                         nextId++
                         lastSpawn = finger.position
