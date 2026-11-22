@@ -139,7 +139,9 @@ data class ApiResult(
     val school: String? = null,
     val surfaces_ok: Int? = null,
     val total_ms: Long? = null,
-    val prefetch_ms: Long? = null
+    val prefetch_ms: Long? = null,
+    val failed: List<String>? = null,
+    val avatar_b64: String? = null
 )
 
 /** Cached envelope written by the Rust core. `data` stays raw until decoded per surface. */
