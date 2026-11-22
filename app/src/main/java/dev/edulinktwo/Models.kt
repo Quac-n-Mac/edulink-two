@@ -136,3 +136,66 @@ inline fun <reified T> decodeSurface(raw: String?): Pair<T?, String?> {
     val cached = decodeCached(raw) ?: return null to null
     return runCatching { json.decodeFromJsonElement<T>(cached.data) }.getOrNull() to cached.fetched_at
 }
+
+@Serializable
+data class Mark(val name: String = "", val present: Boolean = false)
+@Serializable
+data class SessionMark(val session: String = "", val date: String = "", val minutes_late: Long = 0, val mark: Mark? = null)
+@Serializable
+data class TodayAttendance(val sessions: List<SessionMark> = emptyList())
+@Serializable
+data class AttendanceException(val date: String = "", val description: String = "", val period: String = "")
+@Serializable
+data class StatutoryMonth(val month: String = "", val values: Map<String, Long> = emptyMap(), val exceptions: List<AttendanceException> = emptyList())
+@Serializable
+data class LessonAttendance(val subject: String = "", val values: Map<String, Long> = emptyMap())
+@Serializable
+data class AttendanceData(
+    val today: TodayAttendance? = null,
+    val statutory: List<StatutoryMonth> = emptyList(),
+    val lesson: List<LessonAttendance> = emptyList()
+)
+
+@Serializable
+data class ExamCountdown(val minutes_to_go: Long = 0, val exam: String = "")
+@Serializable
+data class Exam(val datetime: String = "", val code: String = "", val title: String = "", val room: String? = null, val seat: String? = null, val duration: String? = null)
+@Serializable
+data class ExamResult(val date: String = "", val code: String = "", val title: String = "", val result: String = "")
+@Serializable
+data class ExamsData(
+    val countdown: ExamCountdown? = null,
+    val timetable: List<Exam> = emptyList(),
+    val results: List<ExamResult> = emptyList()
+)
+
+@Serializable
+data class Notice(val name: String = "", val filename: String? = null, val filesize: Long? = null)
+@Serializable
+data class NoticeboardData(val noticeboard: List<Notice> = emptyList())
+
+@Serializable
+data class CalendarEvent(val start_date: String = "", val description: String = "", val notes: String? = null, val all_day_event: Boolean = false)
+@Serializable
+data class CalendarData(val calendar: List<CalendarEvent> = emptyList())
+
+@Serializable
+data class Club(val name: String = "", val description: String? = null)
+@Serializable
+data class ClubsData(val clubs: List<Club> = emptyList())
+
+@Serializable
+data class PersonalData(val personal: JsonObject? = null)
+
+@Serializable
+data class MessageSender(val name: String = "")
+@Serializable
+data class Message(
+    val subject: String = "",
+    val body: String = "",
+    val date: String = "",
+    val read: String? = null,
+    val sender: MessageSender? = null
+)
+@Serializable
+data class MessagesData(val messages: List<Message> = emptyList())
