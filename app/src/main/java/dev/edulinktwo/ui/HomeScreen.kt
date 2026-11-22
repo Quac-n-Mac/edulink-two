@@ -76,29 +76,36 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
 
     Box(Modifier.fillMaxSize().nestedScroll(scrollProbe)) {
         // Layer 1 (deep): barely-there gradient + faint doodle texture.
+        // Deep plane moves WITH tilt (looking "into" the screen), the pinned
+        // bars counter-move as the near plane. Amplitudes chosen to be clearly
+        // visible on a phone tilt, not just measurable.
         val drift = Modifier.graphicsLayer {
-            scaleX = 1.1f; scaleY = 1.1f
-            translationY = -scrollPx * 0.12f - tilt.y * 8.dp.toPx()
+            scaleX = 1.15f; scaleY = 1.15f
+            translationY = -scrollPx * 0.18f + tilt.y * 20.dp.toPx()
+            translationX = tilt.x * 26.dp.toPx()
+        }
+        val nearDrift = Modifier.graphicsLayer {
+            translationY = -tilt.y * 7.dp.toPx()
             translationX = -tilt.x * 10.dp.toPx()
         }
         Box(
             Modifier
                 .fillMaxSize()
                 .then(drift)
-                .background(Brush.verticalGradient(listOf(Color(0xFFF6F8FA), Color(0xFFE8EDF3))))
+                .background(Brush.verticalGradient(listOf(Color(0xFFF6F8FA), Color(0xFFE1E8F0))))
         )
         Image(
             painter = painterResource(R.drawable.login_bg),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            alpha = 0.05f,
+            alpha = 0.07f,
             modifier = Modifier.fillMaxSize().then(drift)
         )
 
         // Layers 2+3: content scrolls between the pinned bars.
         Column(Modifier.fillMaxSize()) {
             TopAppBar(
-                modifier = Modifier.shadow(barElev),
+                modifier = Modifier.then(nearDrift).shadow(barElev),
                 title = {
                     Column {
                         Text("Edulink Two")
@@ -141,7 +148,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 }
             }
         }
-        NavigationBar(modifier = Modifier.shadow(barElev)) {
+        NavigationBar(modifier = Modifier.then(nearDrift).shadow(barElev)) {
             NavigationBarItem(ui.tab == Tab.HOMEWORK, { vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, label = { Text("Homework") })
             NavigationBarItem(ui.tab == Tab.TIMETABLE, { vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, label = { Text("Timetable") })
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {

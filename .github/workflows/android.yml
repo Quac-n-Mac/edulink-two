@@ -34,8 +34,15 @@ jobs:
         with:
           targets: aarch64-linux-android
 
-      - name: Install cargo-ndk
-        run: cargo install cargo-ndk --locked
+      # Prebuilt cargo-ndk binary (seconds) instead of building it from source (~4 min).
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
+
+      # Rust registry + target cache keyed on Cargo.lock.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: "true"
 
       - name: Build Rust core (arm64-v8a, release)
         run: |
@@ -97,12 +104,24 @@ jobs:
           name: edulink-two-apk
           path: apk
 
+      - name: Cache AVD
+        id: avd-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-34-arm64-v8a-pixel_6
+
       - name: Boot emulator and capture login screens
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
           arch: arm64-v8a
           profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
           script: bash ci/screenshot.sh apk/edulink-two.apk shots
 
       - uses: actions/upload-artifact@v4

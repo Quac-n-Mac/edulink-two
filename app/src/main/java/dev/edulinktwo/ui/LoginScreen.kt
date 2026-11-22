@@ -61,10 +61,10 @@ fun LoginScreen(ui: UiState, vm: AppViewModel) {
     Box(modifier = Modifier.fillMaxSize()) {
         // 1:1 background: gradient + the original doodle overlay.
         val parallax = Modifier.fillMaxSize().graphicsLayer {
-            // deep layer: counter-translate slightly against tilt, oversized to hide edges
-            scaleX = 1.06f; scaleY = 1.06f
-            translationX = -tilt.x * 10.dp.toPx()
-            translationY = -tilt.y * 7.dp.toPx()
+            // deep layer: drifts WITH tilt, oversized to hide edges
+            scaleX = 1.15f; scaleY = 1.15f
+            translationX = tilt.x * 26.dp.toPx()
+            translationY = tilt.y * 20.dp.toPx()
         }
         Box(
             modifier = parallax
