@@ -1,6 +1,8 @@
 package dev.edulinktwo.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.fadeIn
@@ -28,6 +30,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -181,22 +184,52 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         }
         }
         NavigationBar(modifier = Modifier.then(nearDrift).shadow(barElev, ambientColor = softAmbient, spotColor = softSpot)) {
-            // The glass pill floats just above the (near-static) nav bar,
-            // so it keeps only a whisper of drift of its own.
+            // One shared stained-glass pill slides to the tapped tab and
+            // lerps its stain through every page colour it passes. Over
+            // PROFILE it expands to a clear ring around the avatar.
+            val navTabs = listOf(Tab.HOMEWORK, Tab.TIMETABLE, Tab.PROFILE, Tab.POINTS, Tab.MORE)
+            val navStains = listOf(
+                Color(0xFF4E8DF5), // Homework - blue
+                Color(0xFF2EBD85), // Timetable - green
+                Color(0xFF9B6BF3), // Profile - purple (goes clear on land)
+                Color(0xFFF2A93B), // Points - amber
+                Color(0xFF7A8AA0)  // More - slate
+            )
+            val selIdx = navTabs.indexOf(ui.tab).coerceAtLeast(0)
+            val slideIdx by animateFloatAsState(targetValue = selIdx.toFloat(), animationSpec = tween(400, easing = FastOutSlowInEasing), label = "navSlide")
+            val lo = kotlin.math.floor(slideIdx).toInt().coerceIn(0, navTabs.lastIndex)
+            val hi = kotlin.math.ceil(slideIdx).toInt().coerceIn(0, navTabs.lastIndex)
+            val baseStain = lerp(navStains[lo], navStains[hi], slideIdx - lo)
+            val profFactor = (1f - kotlin.math.abs(slideIdx - 2f)).coerceIn(0f, 1f)
+            val stainAlpha = 0.26f * (1f - profFactor)
+            val pillH = 56.dp + 10.dp * profFactor
+            val pillPad = 14.dp * (1f - profFactor) + 2.dp * profFactor
             val pillDrift = Modifier.graphicsLayer {
                 translationY = -tilt.y * 4.dp.toPx()
                 translationX = -tilt.x * 6.dp.toPx()
             }
-            GlassNavItem(ui.tab == Tab.HOMEWORK, { vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, "Homework", glassBackdrop, { contentTopPx }, pillDrift, Modifier.weight(1f))
-            GlassNavItem(ui.tab == Tab.TIMETABLE, { vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, "Timetable", glassBackdrop, { contentTopPx }, pillDrift, Modifier.weight(1f))
-            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                if (ui.tab == Tab.PROFILE) {
-                    Box(Modifier.size(60.dp).then(pillDrift).liquidGlass(glassBackdrop, cornerRadius = 30.dp, edgeWidth = 7.dp, refrStrength = 7.dp, baseAlpha = 0.5f, stainColor = MaterialTheme.colorScheme.primary, stain = 0.22f, scrollOffsetPx = { contentTopPx }))
+            BoxWithConstraints(Modifier.fillMaxWidth().height(80.dp)) {
+                val itemW = maxWidth / navTabs.size
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .offset(x = itemW * slideIdx)
+                        .width(itemW)
+                        .height(pillH)
+                        .padding(horizontal = pillPad)
+                        .then(pillDrift)
+                        .liquidGlass(glassBackdrop, cornerRadius = pillH / 2, edgeWidth = 7.dp, refrStrength = 7.dp, baseAlpha = 0.5f, stainColor = baseStain, stain = stainAlpha, scrollOffsetPx = { contentTopPx })
+                )
+                Row(Modifier.fillMaxSize()) {
+                    GlassNavItem(ui.tab == Tab.HOMEWORK, { vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, "Homework", Modifier.weight(1f))
+                    GlassNavItem(ui.tab == Tab.TIMETABLE, { vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, "Timetable", Modifier.weight(1f))
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        ProfileNavButton(ui, vm, onTap = { vm.selectTab(Tab.PROFILE) }, onLong = { accountSheet = true })
+                    }
+                    GlassNavItem(ui.tab == Tab.POINTS, { vm.selectTab(Tab.POINTS) }, { Icon(Icons.Default.Star, null) }, "Points", Modifier.weight(1f))
+                    GlassNavItem(ui.tab == Tab.MORE, { vm.selectTab(Tab.MORE) }, { Icon(Icons.Default.Menu, null) }, "More", Modifier.weight(1f))
                 }
-                ProfileNavButton(ui, vm, onTap = { vm.selectTab(Tab.PROFILE) }, onLong = { accountSheet = true })
             }
-            GlassNavItem(ui.tab == Tab.POINTS, { vm.selectTab(Tab.POINTS) }, { Icon(Icons.Default.Star, null) }, "Points", glassBackdrop, { contentTopPx }, pillDrift, Modifier.weight(1f))
-            GlassNavItem(ui.tab == Tab.MORE, { vm.selectTab(Tab.MORE) }, { Icon(Icons.Default.Menu, null) }, "More", glassBackdrop, { contentTopPx }, pillDrift, Modifier.weight(1f))
         }
     }
 
@@ -1045,45 +1078,23 @@ private fun TeachersSection(ui: UiState) {
     }
 }
 
-/** Nav bar item whose selected state is a stained liquid-glass pill on
- * the nearest parallax layer (icon + label keep the stock look on top). */
+/** Nav bar item; selection is shown by the shared sliding glass pill
+ * that floats above the bar, so the item itself keeps a transparent
+ * indicator and the stock icon/label look. */
 @Composable
 fun RowScope.GlassNavItem(
     selected: Boolean,
     onClick: () -> Unit,
     icon: @Composable () -> Unit,
     label: String,
-    backdrop: GlassBackdrop,
-    contentTopPx: () -> Float,
-    pillDrift: Modifier,
     modifier: Modifier = Modifier
 ) {
-    Box(modifier, contentAlignment = Alignment.Center) {
-        if (selected) {
-            Box(
-                Modifier
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
-                    .fillMaxWidth()
-                    .height(64.dp)
-                    .then(pillDrift)
-                    .liquidGlass(
-                        backdrop,
-                        cornerRadius = 20.dp,
-                        edgeWidth = 7.dp,
-                        refrStrength = 7.dp,
-                        baseAlpha = 0.5f,
-                        stainColor = MaterialTheme.colorScheme.primary,
-                        stain = 0.22f,
-                        scrollOffsetPx = contentTopPx
-                    )
-            )
-        }
-        NavigationBarItem(
-            selected = selected,
-            onClick = onClick,
-            icon = icon,
-            label = { Text(label) },
-            colors = NavigationBarItemDefaults.colors(indicatorColor = Color.Transparent)
-        )
-    }
+    NavigationBarItem(
+        selected = selected,
+        onClick = onClick,
+        icon = icon,
+        label = { Text(label) },
+        colors = NavigationBarItemDefaults.colors(indicatorColor = Color.Transparent),
+        modifier = modifier
+    )
 }
