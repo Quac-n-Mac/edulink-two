@@ -178,6 +178,12 @@ impl<T: Transport> Client<T> {
         );
         let ctx: LoginContextData =
             serde_json::from_value(ctx.context("login context")?).context("parse login context")?;
+        // LoginContext may rotate the Login token. Use and persist the final
+        // handshake token, rather than continuing with the superseded one.
+        if let Some(token) = ctx.authtoken.filter(|t| !t.trim().is_empty()) {
+            self.transport.set_token(&token);
+            login.authtoken = token;
+        }
         if login.user.is_none() {
             login.user = ctx.user;
         }

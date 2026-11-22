@@ -121,6 +121,8 @@ pub struct LoginData {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LoginContextData {
+    #[serde(default, alias = "auth_token")]
+    pub authtoken: Option<String>,
     #[serde(default)]
     pub establishment: Option<EstablishmentInfo>,
     #[serde(default)]
