@@ -192,6 +192,9 @@ pub struct HomeworkItem {
     pub attachments: Vec<Attachment>,
     #[serde(default)]
     pub icon: Option<String>,
+    /// "EduLink" or "MicrosoftTeams" - required by HomeworkDetails.
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

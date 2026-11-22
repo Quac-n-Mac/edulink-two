@@ -165,7 +165,7 @@ fn cache_dir_of(cache: &Cache) -> PathBuf {
     PathBuf::from(&dbg[start..end])
 }
 
-async fn do_hw_detail(state_dir: PathBuf, cache_dir: PathBuf, id: String) -> Result<String> {
+async fn do_hw_detail(state_dir: PathBuf, cache_dir: PathBuf, id: String, source: String) -> Result<String> {
     let store = AccountStore::load(&state_dir)?;
     let session = store.current().context("not logged in")?.clone();
     let cache = Cache::new(&cache_dir)?.for_user(&session.key())?;
@@ -182,7 +182,8 @@ async fn do_hw_detail(state_dir: PathBuf, cache_dir: PathBuf, id: String) -> Res
         }
     }
     let client = client_for(&session)?;
-    match client.homework_details(&id, "EduLink").await {
+    let source = if source.is_empty() { "EduLink".to_string() } else { source };
+    match client.homework_details(&id, &source).await {
         Ok(d) => {
             cache.write(&name, &d).await?;
             std::fs::read_to_string(cache_file(&cache, &name)).context("read back detail")
@@ -306,12 +307,14 @@ pub extern "system" fn Java_dev_edulinktwo_RustBridge_nativeHwDetail(
     state_dir: JString,
     cache_dir: JString,
     id: JString,
+    source: JString,
 ) -> jstring {
     let out = (|| -> Result<String> {
         let state_dir = PathBuf::from(get(&mut env, &state_dir)?);
         let cache_dir = PathBuf::from(get(&mut env, &cache_dir)?);
         let id = get(&mut env, &id)?;
-        block_on(do_hw_detail(state_dir, cache_dir, id))
+        let source = get(&mut env, &source)?;
+        block_on(do_hw_detail(state_dir, cache_dir, id, source))
     })();
     match out {
         Ok(s) => to_jstring(&mut env, s),

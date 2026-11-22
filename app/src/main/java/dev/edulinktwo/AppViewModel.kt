@@ -259,9 +259,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Detail fetch; second callback value is the REAL error when it fails, never a guess. */
-    fun homeworkDetail(id: String, onDone: (HomeworkDetail?, String?) -> Unit) {
+    fun homeworkDetail(id: String, source: String = "EduLink", onDone: (HomeworkDetail?, String?) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
-            val raw = runCatching { RustBridge.nativeHwDetail(stateDir, cacheDir, id) }.getOrNull()
+            val raw = runCatching { RustBridge.nativeHwDetail(stateDir, cacheDir, id, source) }.getOrNull()
             val (d, _) = decodeSurface<HomeworkDetail>(raw)
             val err = if (d == null) {
                 raw?.let {

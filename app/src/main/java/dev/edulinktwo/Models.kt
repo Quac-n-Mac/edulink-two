@@ -49,7 +49,8 @@ data class HomeworkItem(
     val due_date: String = "",
     val completed: Boolean = false,
     val status: String? = null,
-    val attachments: List<Attachment> = emptyList()
+    val attachments: List<Attachment> = emptyList(),
+    val source: String? = null
 ) {
     fun idString(): String = id?.toString()?.trim('"') ?: ""
 }

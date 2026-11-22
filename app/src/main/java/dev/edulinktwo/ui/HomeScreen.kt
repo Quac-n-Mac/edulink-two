@@ -82,11 +82,11 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 label = "tab"
             ) { tab ->
                 when (tab) {
-                    Tab.HOMEWORK -> HomeworkTab(ui, vm) { id ->
+                    Tab.HOMEWORK -> HomeworkTab(ui, vm) { id, src ->
                         detailError = null
                         detailLoading = true
                         detail = null
-                        vm.homeworkDetail(id) { d, err ->
+                        vm.homeworkDetail(id, src) { d, err ->
                             detailLoading = false
                             if (d != null) detail = d else detailError = err ?: "could not load this homework"
                         }
@@ -204,7 +204,7 @@ fun stripHtml(s: String): String =
     s.replace(Regex("<[^>]*>"), "").replace(Regex("\\s+"), " ").trim()
 
 @Composable
-fun HomeworkTab(ui: UiState, vm: AppViewModel, onTap: (String) -> Unit) {
+fun HomeworkTab(ui: UiState, vm: AppViewModel, onTap: (String, String) -> Unit) {
     val hw = ui.homework
     if (hw == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No homework cached yet. Pull to refresh.") }
@@ -232,7 +232,7 @@ fun HomeworkTab(ui: UiState, vm: AppViewModel, onTap: (String) -> Unit) {
             }
             Card(
                 Modifier.fillMaxWidth().clickable {
-                    onTap(h.idString())
+                    onTap(h.idString(), h.source ?: "EduLink")
                 },
                 colors = CardDefaults.cardColors(containerColor = rowColor)
             ) {
