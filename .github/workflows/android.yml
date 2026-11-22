@@ -119,10 +119,10 @@ jobs:
           path: shots/
 
   publish:
-    # Gated on screenshots so visually broken builds (glass!) never reach
-    # the nightly unverified. If screenshots flakes, re-run its job; or in
-    # an emergency run the release steps manually via the API.
-    needs: [build, screenshots]
+    # Publishes on compile-green: the owner QAs live on nightly builds and
+    # the screenshots job still runs in parallel as post-publish evidence
+    # (its artifacts land under "login-screenshots" for review).
+    needs: [build]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
