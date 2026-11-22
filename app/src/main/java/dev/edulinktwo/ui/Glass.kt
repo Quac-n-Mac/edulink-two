@@ -1,5 +1,7 @@
 package dev.edulinktwo.ui
 
+import android.graphics.RenderEffect
+import android.graphics.RenderNode
 import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.os.Build
@@ -10,7 +12,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
@@ -21,10 +26,12 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.positionInWindow
@@ -167,18 +174,17 @@ class GlassBackdrop {
 fun Modifier.glassBackdrop(
     backdrop: GlassBackdrop,
     layer: GraphicsLayer,
-    scope: CoroutineScope,
-    scale: Float = 0.5f
+    scope: CoroutineScope
 ): Modifier = this.onGloballyPositioned { backdrop.rootWinPos = it.positionInWindow() }.drawWithContent {
+    // Record at FULL resolution: the same layer serves the live GPU glass
+    // surfaces (bars, pill) and, on capture ticks, the downscaled bitmap
+    // pipeline that sheets in their separate window still use.
+    layer.record(androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt())) {
+        this@drawWithContent.drawContent()
+    }
+    drawLayer(layer)
     if (!backdrop.captureInFlight && backdrop.capturedVersion < backdrop.captureVersion) {
         backdrop.captureInFlight = true
-        // Record at `scale`: a quarter of the pixels to read back, and
-        // smaller textures stay well clear of GPU/driver size quirks.
-        val cw = (size.width * scale).roundToInt().coerceAtLeast(1)
-        val ch = (size.height * scale).roundToInt().coerceAtLeast(1)
-        layer.record(androidx.compose.ui.unit.IntSize(cw, ch)) {
-            scale(scale, scale, pivot = Offset.Zero) { this@drawWithContent.drawContent() }
-        }
         val v = backdrop.captureVersion
         scope.launch {
             try {
@@ -190,15 +196,14 @@ fun Modifier.glassBackdrop(
                 val safe = hw.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
                 if (safe != null && v.toLong() >= backdrop.capturedVersion) {
                     // Bake the blur into real pixels: downscale hard, then
-                    // upscale bilinearly. Smooth under ANY filter mode - the
-                    // BitmapShader ctor that controls filtering is API 34+.
+                    // upscale bilinearly. Smooth under ANY filter mode.
                     val fw = (safe.width / 4).coerceAtLeast(1)
                     val fh = (safe.height / 4).coerceAtLeast(1)
                     val small = android.graphics.Bitmap.createScaledBitmap(safe, fw, fh, true)
                     backdrop.frost = android.graphics.Bitmap.createScaledBitmap(small, safe.width, safe.height, true).asImageBitmap()
-                    backdrop.frostScale = scale
+                    backdrop.frostScale = 1f
                     backdrop.bitmap = safe.asImageBitmap()
-                    backdrop.scale = scale
+                    backdrop.scale = 1f
                 }
                 backdrop.capturedVersion = maxOf(backdrop.capturedVersion, v.toLong())
             } catch (_: Throwable) {
@@ -208,7 +213,6 @@ fun Modifier.glassBackdrop(
             }
         }
     }
-    drawContent()
 }
 
 fun Modifier.liquidGlass(
@@ -279,3 +283,162 @@ fun Modifier.liquidGlass(
             clipPath(path) { drawRect(brush) }
         }
 }
+
+// ---------------------------------------------------------------------------
+// Live glass (Android 13+): zero-readback GPU pipeline.
+// Architecture per Haze (chrisbanes.github.io/haze) and Kyant0/backdrop:
+// the shared backdrop stays in a GPU GraphicsLayer; each glass surface
+// records the region behind it into a hardware RenderNode and applies its
+// shader as a RenderEffect (blur -> lens chain). Full resolution, every
+// frame, nothing ever crosses the CPU.
+// ---------------------------------------------------------------------------
+
+internal const val GLASS_AGSL_LIVE = """
+uniform shader contents;
+uniform float2 resolution;
+uniform float cornerRadius;
+uniform float edgeWidth;     // lens thickness: depth at which refraction dies, px
+uniform float refrStrength;  // refraction distance at the rim, px
+uniform float dispersion;
+uniform float2 lightDir;
+uniform float baseAlpha;
+uniform float tintLighten;
+uniform float3 stainColor;
+uniform float stain;
+
+const float IOR = 1.45;
+
+float sdRoundRect(float2 p, float2 halfSize, float r) {
+    float2 q = abs(p) - halfSize + r;
+    return length(max(q, float2(0.0))) + min(max(q.x, q.y), 0.0) - r;
+}
+
+float2 sdfNormal(float2 p, float2 halfSize, float r) {
+    float e = 0.75;
+    float2 g = float2(
+        sdRoundRect(p + float2(e, 0.0), halfSize, r) - sdRoundRect(p - float2(e, 0.0), halfSize, r),
+        sdRoundRect(p + float2(0.0, e), halfSize, r) - sdRoundRect(p - float2(0.0, e), halfSize, r));
+    float l = length(g);
+    return l > 0.0001 ? g / l : float2(0.0, -1.0);
+}
+
+float edgeFactor(float depth, float thickness, float ior) {
+    if (depth >= thickness) return 0.0;
+    float x = 1.0 - depth / thickness;
+    float thetaI = asin(clamp(x * x, 0.0, 1.0));
+    float thetaT = asin(clamp(sin(thetaI) / ior, -1.0, 1.0));
+    return -tan(thetaT - thetaI);
+}
+
+half4 main(float2 fragCoord) {
+    float2 halfSize = resolution * 0.5;
+    float2 p = fragCoord - halfSize;
+    float cr = min(cornerRadius, min(halfSize.x, halfSize.y));
+    float d = sdRoundRect(p, halfSize, cr);
+    float depth = -d;
+    float thickness = max(edgeWidth, 1.0);
+    float2 n = sdfNormal(p, halfSize, cr);
+
+    float fR = edgeFactor(depth, thickness, IOR * (1.0 - dispersion));
+    float fG = edgeFactor(depth, thickness, IOR);
+    float fB = edgeFactor(depth, thickness, IOR * (1.0 + dispersion));
+    float2 rd = -n * refrStrength;
+    half3 col = half3(
+        contents.eval(fragCoord + rd * fR).r,
+        contents.eval(fragCoord + rd * fG).g,
+        contents.eval(fragCoord + rd * fB).b);
+
+    col = mix(col, half3(1.0), tintLighten);
+    col *= half3(0.97, 0.985, 1.03);
+
+    float luma = dot(float3(col), float3(0.299, 0.587, 0.114));
+    float lift = (1.0 - smoothstep(0.12, 0.5, luma)) * 0.16;
+    float settle = smoothstep(0.62, 0.95, luma) * 0.14;
+    col = col * (1.0 - settle) + half3(1.0) * lift;
+
+    col = mix(col, half3(stainColor), stain);
+
+    float rimT = 1.0 - clamp(depth / thickness, 0.0, 1.0);
+    float facing = max(dot(n, lightDir), 0.0);
+    col += pow(rimT, 3.0) * (0.10 + 0.55 * pow(facing, 2.5));
+    col *= 1.0 - pow(rimT, 2.0) * max(dot(n, -lightDir), 0.0) * 0.10;
+
+    float alpha = (1.0 - smoothstep(-1.2, -0.2, d)) * baseAlpha;
+    return half4(col * alpha, alpha);
+}
+"""
+
+/**
+ * Live liquid glass for in-window surfaces (bars, sliding pill): samples the
+ * shared GPU backdrop layer directly, every frame, at full resolution.
+ * Sheets stay on the bitmap pipeline - they live in a separate window and
+ * cannot see this window's layer. Root-content drawing into [layer] is done
+ * by [glassBackdrop].
+ */
+fun Modifier.liquidGlassLive(
+    backdrop: GlassBackdrop,
+    layer: GraphicsLayer,
+    cornerRadius: Dp = 24.dp,
+    edgeWidth: Dp = 10.dp,
+    refrStrength: Dp = 9.dp,
+    blurRadius: Dp = 1.4.dp,
+    baseAlpha: Float = 0.55f,
+    stainColor: Color = Color.Transparent,
+    stain: Float = 0f,
+    frosted: Boolean = false,
+    lightDir: () -> Offset = { Offset(-0.55f, -0.83f) },
+): Modifier = composed {
+    if (Build.VERSION.SDK_INT < 33 || !VisualTuning.realGlass) {
+        return@composed drawBehind {
+            val rr = RoundRect(0f, 0f, size.width, size.height, CornerRadius(cornerRadius.toPx()))
+            val path = Path().apply { addRoundRect(rr) }
+            clipPath(path) { drawRect(Color.White.copy(alpha = (0.06f * VisualTuning.glassAlpha).coerceIn(0f, 1f))) }
+            drawRoundRect(color = Color(0x2EFFFFFF), size = size, cornerRadius = CornerRadius(cornerRadius.toPx()), style = Stroke(width = 1.5.dp.toPx()))
+        }
+    }
+    var pos by remember { mutableStateOf(Offset.Zero) }
+    val shader = remember { RuntimeShader(GLASS_AGSL_LIVE) }
+    val cds = remember { CanvasDrawScope() }
+    val node = remember { RenderNode("liquidGlassLive") }
+    this
+        .onGloballyPositioned { pos = it.positionInWindow() - backdrop.rootWinPos }
+        .drawWithContent {
+            val w = size.width.roundToInt()
+            val h = size.height.roundToInt()
+            if (w > 1 && h > 1) {
+                shader.setFloatUniform("resolution", size.width, size.height)
+                shader.setFloatUniform("cornerRadius", cornerRadius.toPx())
+                shader.setFloatUniform("edgeWidth", edgeWidth.toPx() * 2.5f)
+                shader.setFloatUniform("refrStrength", refrStrength.toPx() * VisualTuning.refraction)
+                shader.setFloatUniform("dispersion", 0.04f)
+                val ld = lightDir()
+                shader.setFloatUniform("lightDir", ld.x, ld.y)
+                shader.setFloatUniform("baseAlpha", (baseAlpha * VisualTuning.glassAlpha).coerceIn(0f, 1f))
+                shader.setFloatUniform("tintLighten", 0.07f)
+                shader.setFloatUniform("stainColor", stainColor.red, stainColor.green, stainColor.blue)
+                shader.setFloatUniform("stain", stain)
+                val lensEffect = RenderEffect.createRuntimeShaderEffect(shader, "contents")
+                val effect = if (frosted) {
+                    val r = blurRadius.toPx().coerceAtLeast(6f)
+                    RenderEffect.createChainEffect(
+                        lensEffect,
+                        RenderEffect.createBlurEffect(r, r, Shader.TileMode.CLAMP)
+                    )
+                } else lensEffect
+                node.setRenderEffect(effect)
+                node.setPosition(0, 0, w, h)
+                val rec = node.beginRecording(w, h)
+                val cc = androidx.compose.ui.graphics.Canvas(rec)
+                cc.save()
+                cc.translate(-pos.x, -pos.y)
+                cds.draw(this@drawWithContent, layoutDirection, cc, Size(w.toFloat(), h.toFloat())) {
+                    drawLayer(layer)
+                }
+                cc.restore()
+                node.endRecording()
+                drawContext.canvas.nativeCanvas.drawRenderNode(node)
+            }
+            drawContent()
+        }
+}
+

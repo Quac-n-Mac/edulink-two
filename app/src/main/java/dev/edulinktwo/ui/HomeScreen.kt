@@ -320,7 +320,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 seenScroll = scrollPx; seenSlide = slideIdx; seenTiltX = tilt.x; seenTiltY = tilt.y
                 lastMove = now
             }
-            val interval = if (now - lastMove < 400_000_000L) 66_000_000L else 500_000_000L
+            val interval = if (now - lastMove < 400_000_000L) 150_000_000L else 1_000_000_000L
             if (now - lastCap >= interval) { glassBackdrop.captureVersion++; lastCap = now }
         }
     }
@@ -337,7 +337,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     // No RenderEffect background blur behind sheets: the effect's own
     // offscreen pass produced magenta/green pixel garbage on his GPU, and
     // the sheet glass frosts its own region anyway (scrim still dims).
-    Column(Modifier.fillMaxSize().nestedScroll(scrollProbe).glassBackdrop(glassBackdrop, glassLayer, glassScope, 0.6f)) {
+    Column(Modifier.fillMaxSize().nestedScroll(scrollProbe).glassBackdrop(glassBackdrop, glassLayer, glassScope)) {
         Box(Modifier.fillMaxSize()) {
         // Layer 1 (deep): barely-there gradient + faint doodle texture.
         Box(
@@ -443,7 +443,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     // so the raised profile avatar escapes the bar.
     Box(Modifier.align(Alignment.BottomCenter).then(nearDrift)
             .shadow(barElev, clip = false, ambientColor = softAmbient, spotColor = softSpot)
-            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 4.dp, refrStrength = 5.5.dp, blurRadius = 26.dp, baseAlpha = 0.92f, stainColor = ThemeStore.current.bar, stain = 0.5f, frosted = true)
+            .liquidGlassLive(glassBackdrop, glassLayer, cornerRadius = 0.dp, edgeWidth = 4.dp, refrStrength = 5.5.dp, blurRadius = 26.dp, baseAlpha = 0.92f, stainColor = ThemeStore.current.bar, stain = 0.5f, frosted = true)
             .navigationBarsPadding()
             .onGloballyPositioned { navPos = it.positionInRoot(); navSize = it.size }) {
             CompositionLocalProvider(LocalRippleConfiguration provides null) {
@@ -511,7 +511,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 .then(pillStretch)
                 .shadow(10.dp, RoundedCornerShape(pillH / 2), clip = false, ambientColor = baseStain, spotColor = baseStain)
                 .then(pillDrift)
-                .liquidGlass(glassBackdrop, cornerRadius = pillH / 2, edgeWidth = 5.dp, refrStrength = 6.dp, baseAlpha = 0.42f, stainColor = baseStain, stain = stainAlpha)
+                .liquidGlassLive(glassBackdrop, glassLayer, cornerRadius = pillH / 2, edgeWidth = 5.dp, refrStrength = 6.dp, baseAlpha = 0.42f, stainColor = baseStain, stain = stainAlpha)
         )
     }
 
@@ -547,7 +547,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             .align(Alignment.TopCenter)
             .then(nearDrift)
             .shadow(barElev, clip = false, ambientColor = softAmbient, spotColor = softSpot)
-            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 5.dp, refrStrength = 7.dp, blurRadius = 4.dp, baseAlpha = 0.92f, stainColor = ThemeStore.current.bar, stain = 0.25f, frosted = true)
+            .liquidGlassLive(glassBackdrop, glassLayer, cornerRadius = 0.dp, edgeWidth = 5.dp, refrStrength = 7.dp, blurRadius = 4.dp, baseAlpha = 0.92f, stainColor = ThemeStore.current.bar, stain = 0.25f, frosted = true)
             .statusBarsPadding(),
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         title = {
