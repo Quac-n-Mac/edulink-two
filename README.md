@@ -102,6 +102,15 @@ All 11 surfaces pre-cache in parallel at login and refresh behind the cache.
 
 ## Roadmap
 
+### v2 - QoL batch (after v1 APK ships)
+- Lock-screen "now / next lesson" indicator (the one QoL the OG app had)
+- Notification when new homework is set
+- Notification when points change
+- Evening reminder for homework due tomorrow
+- Home-screen widget: next lesson + homework due
+(All powered by the existing cache + parallel refresh; notifications compare
+fresh fetches against the last snapshot, offline-safe.)
+
 Deferred (not silently dropped): Communicator outbox view, documents viewer
 (download-on-tap when connectivity allows), iCalendars export, forms/data
 collection, report cards, catering/balance (if the school enables it).
