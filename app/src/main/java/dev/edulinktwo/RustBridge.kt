@@ -6,10 +6,14 @@ object RustBridge {
         System.loadLibrary("edulink_bridge")
     }
 
+    external fun nativeResolveSchool(code: String): String
+
     external fun nativeLogin(
         stateDir: String,
         cacheDir: String,
         host: String,
+        schoolCode: String,
+        schoolId: String,
         username: String,
         password: String,
         learnerId: String
