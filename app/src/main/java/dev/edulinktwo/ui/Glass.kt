@@ -163,8 +163,9 @@ fun Modifier.glassBackdrop(
             val bmp = layer.toImageBitmap()
             if (v.toLong() >= backdrop.capturedVersion) {
                 val src = bmp.asAndroidBitmap()
-                val fw = (src.width / 8).coerceAtLeast(1)
-                val fh = (src.height / 8).coerceAtLeast(1)
+                // 1/12: deep enough that letters blur to unreadable mush.
+                val fw = (src.width / 12).coerceAtLeast(1)
+                val fh = (src.height / 12).coerceAtLeast(1)
                 backdrop.frost = android.graphics.Bitmap.createScaledBitmap(src, fw, fh, true).asImageBitmap()
                 backdrop.frostScale = fw.toFloat() / src.width.toFloat()
                 backdrop.scale = 1f

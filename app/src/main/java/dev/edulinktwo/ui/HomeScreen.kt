@@ -123,6 +123,7 @@ private class SlopedViewConfiguration(val base: ViewConfiguration, val mult: Flo
 @Composable
 fun HomeScreen(ui: UiState, vm: AppViewModel) {
     var accountSheet by remember { mutableStateOf(false) }
+    var avatarBig by remember { mutableStateOf(false) }
     var detail by remember { mutableStateOf<HomeworkDetail?>(null) }
     var detailLoading by remember { mutableStateOf(false) }
     var detailError by remember { mutableStateOf<String?>(null) }
@@ -410,7 +411,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     // so the raised profile avatar escapes the bar.
     Box(Modifier.align(Alignment.BottomCenter).then(nearDrift)
             .shadow(barElev, clip = false, ambientColor = softAmbient, spotColor = softSpot)
-            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 4.dp, refrStrength = 3.dp, blurRadius = 14.dp, baseAlpha = 0.55f, stainColor = ThemeStore.current.bar, stain = 0.5f, frosted = true)
+            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 4.dp, refrStrength = 3.dp, blurRadius = 26.dp, baseAlpha = 0.6f, stainColor = ThemeStore.current.bar, stain = 0.5f, frosted = true)
             .navigationBarsPadding()
             .onGloballyPositioned { navPos = it.positionInRoot(); navSize = it.size }) {
             CompositionLocalProvider(LocalRippleConfiguration provides null) {
@@ -501,7 +502,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                     }
                 }
         ) {
-            ProfileNavButton(ui, vm, onTap = { vm.selectTab(Tab.PROFILE) }, onLong = { accountSheet = true }, onPlaced = { avatarCenterY = it })
+            ProfileNavButton(ui, vm, onTap = { avatarBig = true }, onLong = { accountSheet = true }, onPlaced = { avatarCenterY = it })
         }
     }
 
@@ -530,6 +531,22 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             IconButton(onClick = { vm.refresh() }) { Icon(Icons.Default.Refresh, "Refresh") }
         }
     )
+    }
+
+    // Tap the pfp: big viewer. Long-press stays the profiles sheet.
+    if (avatarBig) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { avatarBig = false }) {
+            Column(Modifier.fillMaxWidth().clickable { avatarBig = false }, horizontalAlignment = Alignment.CenterHorizontally) {
+                val av = remember(ui.currentAccount) {
+                    vm.avatarFile(ui.currentAccount)?.let { BitmapFactory.decodeFile(it.absolutePath)?.asImageBitmap() }
+                }
+                if (av != null) {
+                    Image(av, null, Modifier.size(240.dp).clip(CircleShape).border(3.dp, Color.White, CircleShape))
+                } else {
+                    Box(Modifier.size(240.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+                }
+            }
+        }
     }
 
     if (detail != null || detailLoading || detailError != null) {
