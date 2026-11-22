@@ -100,10 +100,37 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun login(host: String, username: String, password: String, learnerId: String, onDone: (Boolean, String?) -> Unit) {
+    /** Pre-login: resolve a school code/postcode like the stock app. */
+    fun resolveSchool(code: String, onDone: (Boolean, SchoolResolveResult?, String?) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val raw = runCatching { RustBridge.nativeResolveSchool(code.trim()) }
+                .getOrElse { "{\"ok\":false,\"error\":\"bridge failed\"}" }
+            val res = runCatching { json.decodeFromString<SchoolResolveResult>(raw) }.getOrNull()
+            if (res?.ok == true) {
+                res.logo_b64?.let { b64 ->
+                    runCatching {
+                        val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+                        java.io.File(stateDir, "school-${res.school_id}.png").writeBytes(bytes)
+                    }
+                }
+                withContext(Dispatchers.Main) { onDone(true, res, null) }
+            } else {
+                withContext(Dispatchers.Main) { onDone(false, null, res?.error ?: "school not found") }
+            }
+        }
+    }
+
+    /** Saved crest for a school id, if we have one. */
+    fun crestFile(schoolId: Long): java.io.File? {
+        if (schoolId <= 0) return null
+        val f = java.io.File(stateDir, "school-$schoolId.png")
+        return if (f.exists()) f else null
+    }
+
+    fun login(host: String, schoolCode: String, schoolId: Long, username: String, password: String, learnerId: String, onDone: (Boolean, String?) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             val raw = runCatching {
-                RustBridge.nativeLogin(stateDir, cacheDir, host, username, password, learnerId)
+                RustBridge.nativeLogin(stateDir, cacheDir, host, schoolCode, schoolId.toString(), username, password, learnerId)
             }.getOrElse { "{\"ok\":false,\"error\":\"bridge failed\"}" }
             val res = runCatching { json.decodeFromString<ApiResult>(raw) }.getOrNull()
             if (res?.ok == true) {
@@ -134,6 +161,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun switchAccount(key: String) {
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { RustBridge.nativeSwitchAccount(stateDir, key) }
+            _ui.value = _ui.value.copy(showLogin = false)
             reloadAccounts()
             // Instant: cached surfaces for this account render immediately.
             _ui.value = _ui.value.copy(homework = null, timetable = null, achievement = null, behaviour = null, lastUpdated = null)
