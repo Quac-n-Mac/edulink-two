@@ -1,0 +1,1 @@
+{"jsonrpc": "2.0", "id": "1", "result": {"success": true, "method": "EduLink.Clubs", "clubs": [{"id": 10, "name": "Coding Club", "description": "<p>Thursday lunchtimes in IT1. Bring a project or start one.</p>"}, {"id": 11, "name": "Girls Football Training", "description": "<p>Fridays after school on the Astro.</p>"}]}}
