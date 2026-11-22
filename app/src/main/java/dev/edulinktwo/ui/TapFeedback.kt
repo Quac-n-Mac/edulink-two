@@ -30,14 +30,15 @@ fun TapFeedbackHost(content: @Composable () -> Unit) {
     var bubbles by remember { mutableStateOf(listOf<Bubble>()) }
     var nextId by remember { mutableIntStateOf(0) }
     val radius = with(LocalDensity.current) { 24.dp.toPx() }
-    val trailStep = with(LocalDensity.current) { 56.dp.toPx() }
+    val trailStep = with(LocalDensity.current) { 44.dp.toPx() }
     Box(Modifier.fillMaxSize().pointerInput(Unit) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
             if (VisualTuning.tapFeedback) {
-                bubbles = bubbles + Bubble(nextId, down.position)
+                // No capture bump: bubbles live outside the captured content,
+                // so spawning one must not trigger a full-screen readback.
+                bubbles = (bubbles + Bubble(nextId, down.position)).takeLast(8)
                 nextId++
-                backdrop.captureVersion++
             }
             var lastSpawn = down.position
             var active = true
@@ -51,7 +52,7 @@ fun TapFeedbackHost(content: @Composable () -> Unit) {
                         val sp = kotlin.math.hypot(dx, dy)
                         val amt = (sp / 30f).coerceIn(0f, 1f)
                         val ang = if (amt > 0f) Math.toDegrees(kotlin.math.atan2(dy.toDouble(), dx.toDouble())).toFloat() else 0f
-                        bubbles = bubbles + Bubble(nextId, finger.position, amt, ang)
+                        bubbles = (bubbles + Bubble(nextId, finger.position, amt, ang)).takeLast(8)
                         nextId++
                         lastSpawn = finger.position
                     }
@@ -81,7 +82,7 @@ fun TapFeedbackHost(content: @Composable () -> Unit) {
                         }
                     }
                     .liquidGlass(backdrop, cornerRadius = 24.dp, edgeWidth = 7.dp,
-                        refrStrength = 5.dp, baseAlpha = 0.55f, stainColor = Color.White, stain = 0.3f))
+                        refrStrength = 5.dp, baseAlpha = 0.55f, stainColor = Color.White, stain = 0.3f, frosted = true))
             }
         }
     }

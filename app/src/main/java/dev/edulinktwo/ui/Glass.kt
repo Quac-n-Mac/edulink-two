@@ -221,10 +221,14 @@ fun Modifier.liquidGlass(
             val useFrost = frosted && backdrop.frost != null
             val bmp = if (useFrost) backdrop.frost!! else sharp
             val texScale = if (useFrost) backdrop.frostScale else backdrop.scale
+            // LINEAR filtering is load-bearing for the frost texture: the
+            // 3-arg ctor samples NEAREST, which renders the 1/8 downscale as
+            // pixelated coloured garbage instead of blur. (API 33+ path.)
             shader.setInputBuffer(
                 "backdrop",
                 android.graphics.BitmapShader(
-                    bmp.asAndroidBitmap(), Shader.TileMode.CLAMP, Shader.TileMode.CLAMP
+                    bmp.asAndroidBitmap(), Shader.TileMode.CLAMP, Shader.TileMode.CLAMP,
+                    android.graphics.BitmapShader.FILTER_MODE_LINEAR
                 )
             )
             shader.setFloatUniform("resolution", size.width, size.height)

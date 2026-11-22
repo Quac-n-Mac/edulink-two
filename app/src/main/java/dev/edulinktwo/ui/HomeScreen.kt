@@ -9,6 +9,7 @@ import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.graphics.TransformOrigin
@@ -57,7 +58,10 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.platform.ViewConfiguration
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -66,6 +70,16 @@ import androidx.activity.compose.BackHandler
 import dev.edulinktwo.*
 import dev.edulinktwo.R
 import java.time.LocalDate
+
+/** Wraps the view config with a multiplied touch slop: used INSIDE pager
+ * pages so the vertical list needs more travel to claim a drag, letting
+ * slightly-angled horizontal swipes page instead of scroll. */
+private class SlopedViewConfiguration(val base: ViewConfiguration, val mult: Float) : ViewConfiguration {
+    override val longPressTimeoutMillis: Long get() = base.longPressTimeoutMillis
+    override val doubleTapMinTimeMillis: Long get() = base.doubleTapMinTimeMillis
+    override val doubleTapTimeoutMillis: Long get() = base.doubleTapTimeoutMillis
+    override val touchSlop: Float get() = base.touchSlop * mult
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -161,7 +175,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     LaunchedEffect(ui.tab) {
         val idx = navTabs.indexOf(ui.tab).coerceAtLeast(0)
         if (idx != pagerState.settledPage) {
-            pagerState.animateScrollToPage(idx, animationSpec = if (VisualTuning.systemReducedMotion) tween(0) else spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMediumLow))
+            pagerState.animateScrollToPage(idx, animationSpec = if (VisualTuning.systemReducedMotion) tween(0) else spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMedium))
         }
     }
     val slideIdx = dragIndex ?: (pagerState.currentPage + pagerState.currentPageOffsetFraction)
@@ -214,8 +228,18 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     // animation frame, and whenever scrolling settles.
     LaunchedEffect(ui.tab) { glassBackdrop.captureVersion++ }
     LaunchedEffect(ui.lastUpdated) { glassBackdrop.captureVersion++ }
+    // Throttled: a full-screen readback every slide frame is what made tab
+    // switches jank and look "stuck mid-flight". 150ms while sliding, plus
+    // one fresh capture when scrolling settles.
     LaunchedEffect(Unit) {
-        snapshotFlow { slideIdx }.collect { glassBackdrop.captureVersion++ }
+        var lastCap = 0L
+        snapshotFlow { slideIdx }.collect {
+            val now = System.nanoTime()
+            if (now - lastCap >= 150_000_000L) { glassBackdrop.captureVersion++; lastCap = now }
+        }
+    }
+    LaunchedEffect(Unit) {
+        snapshotFlow { pagerState.isScrollInProgress }.collect { if (!it) glassBackdrop.captureVersion++ }
     }
     LaunchedEffect(Unit) {
         snapshotFlow { scrollPx }.collectLatest {
@@ -224,11 +248,16 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         }
     }
 
+    // Bare text (headers like "Current"/"Past") has no Surface ancestor, so
+    // LocalContentColor defaults to black - unreadable on dark themes.
+    CompositionLocalProvider(LocalContentColor provides if (ThemeStore.current.dark) Color(0xFFE9EDF5) else Color(0xFF1B1B1F)) {
     Box(Modifier.fillMaxSize()) {
     // Edge rubber-band: dragging outward past the first/last page follows
     // with resistance, squashes page + avatar, then springs back.
     val overdrag = remember { Animatable(0f) }
     val pagerScope = rememberCoroutineScope()
+    // Bottom popups sit at ~1/3 of the screen (was ~1/4 wrap-content).
+    val sheetMin = (LocalConfiguration.current.screenHeightDp * 0.34f).dp
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val bgBlur = if (android.os.Build.VERSION.SDK_INT >= 31 && (anySheet || accountSheet || lessonSel != null))
         Modifier.graphicsLayer {
@@ -262,6 +291,22 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             // page (system overscroll glow is off so only the squeeze shows).
             CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()
+                // Double-tap near a screen edge on empty space flips the page.
+                // Cards/interactive content consume the taps first, so this
+                // only fires on bare background.
+                .pointerInput(pagerState) {
+                    detectTapGestures(onDoubleTap = { pos ->
+                        val zone = size.width * 0.22f
+                        val target = (when {
+                            pos.x <= zone -> pagerState.currentPage - 1
+                            pos.x >= size.width - zone -> pagerState.currentPage + 1
+                            else -> pagerState.currentPage
+                        }).coerceIn(0, navTabs.lastIndex)
+                        if (target != pagerState.currentPage) {
+                            pagerScope.launch { pagerState.animateScrollToPage(target, animationSpec = if (VisualTuning.systemReducedMotion) tween(0) else spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMedium)) }
+                        }
+                    })
+                }
                 .pointerInput(pagerState) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
@@ -299,6 +344,8 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                         transformOrigin = TransformOrigin(if (o > 0f) 0f else 1f, 0.5f)
                     }
                 }) { page ->
+                val baseCfg = LocalViewConfiguration.current
+                CompositionLocalProvider(LocalViewConfiguration provides SlopedViewConfiguration(baseCfg, 1.5f)) {
                 when (navTabs[page]) {
                     Tab.HOMEWORK -> HomeworkTab(ui, vm) { id, src ->
                         detailError = null
@@ -313,6 +360,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                     Tab.PROFILE -> ProfileTab(ui, vm)
                     Tab.POINTS -> PointsTab(ui)
                     Tab.MORE -> MoreTab(ui, vm)
+                }
                 }
             }
             }
@@ -348,7 +396,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                                 if (frac <= 0.5f) pagerState.scrollToPage(whole, frac)
                                 else pagerState.scrollToPage((whole + 1).coerceAtMost(last), frac - 1f)
                                 dragIndex = null
-                                pagerState.animateScrollToPage(target, animationSpec = if (VisualTuning.systemReducedMotion) tween(0) else spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMediumLow))
+                                pagerState.animateScrollToPage(target, animationSpec = if (VisualTuning.systemReducedMotion) tween(0) else spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMedium))
                             }
                             vm.selectTab(navTabs[target])
                         }
@@ -450,7 +498,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             onDismissRequest = { detail = null; detailLoading = false; detailError = null },
             containerColor = Color.Transparent
         ) {
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f, frosted = true).padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
+            Column(Modifier.fillMaxWidth().heightIn(min = sheetMin).clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f, frosted = true).padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
                 when {
                     detailLoading -> Text("Loading...", style = MaterialTheme.typography.bodyMedium)
                     detail == null -> Text(detailError ?: "could not load homework", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
@@ -497,13 +545,13 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
 
     lessonSel?.let { lesson ->
         ModalBottomSheet(onDismissRequest = { lessonSel = null }, containerColor = Color.Transparent) {
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f, frosted = true)) { LessonSheet(ui, vm, lesson) }
+            Column(Modifier.fillMaxWidth().heightIn(min = sheetMin).clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f, frosted = true)) { LessonSheet(ui, vm, lesson) }
         }
     }
 
     if (accountSheet) {
         ModalBottomSheet(onDismissRequest = { accountSheet = false }, containerColor = Color.Transparent) {
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f, frosted = true).padding(bottom = 32.dp)) {
+            Column(Modifier.fillMaxWidth().heightIn(min = sheetMin).clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f, frosted = true).padding(bottom = 32.dp)) {
                 Text("Profiles", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
                 ui.accounts.forEach { a ->
                     ListItem(
@@ -527,6 +575,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 )
             }
         }
+    }
     }
 }
 
@@ -566,16 +615,22 @@ fun HomeworkTab(ui: UiState, vm: AppViewModel, onTap: (String, String) -> Unit) 
     }
     var showPast by remember { mutableStateOf(false) }
     val today = LocalDate.now()
+    val theme = ThemeStore.current
+    val onCard = if (theme.dark) Color(0xFFE9EDF5) else Color(0xFF1B1B1F)
+    val subCard = if (theme.dark) Color(0xFFB9C2D4) else Color(0xFF565C66)
+    val doneColor = if (theme.dark) Color(0xFF8BE09A) else Color(0xFF2E7D32)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { Text("Current", style = MaterialTheme.typography.titleMedium) }
         items(hw.homework.current, key = { "cur-" + it.idString() + it.due_date }) { h ->
             val due = runCatching { LocalDate.parse(h.due_date.take(10)) }.getOrNull()
             val days = due?.toEpochDay()?.minus(today.toEpochDay())?.toInt()
+            // State colours come from the theme: same meaning (green done,
+            // red due, orange tomorrow, slate later), tinted per theme.
             val rowColor = when {
-                h.completed -> Color(0xFFC8E6C9) // done: green
-                days != null && days <= 0 && days > -730 -> Color(0xFFFFCDD2) // due today/overdue: red
-                days == 1 -> Color(0xFFFFE0B2) // due tomorrow: orange
-                else -> Color(0xFFECEFF1) // 2+ days: grey
+                h.completed -> theme.hwContainer(130f, 0.50f)
+                days != null && days <= 0 && days > -730 -> theme.hwContainer(4f, 0.55f)
+                days == 1 -> theme.hwContainer(32f, 0.55f)
+                else -> theme.hwContainer(215f, 0.28f)
             }
             val dueLabel = when {
                 days == null -> "due ${h.due_date}"
@@ -592,12 +647,12 @@ fun HomeworkTab(ui: UiState, vm: AppViewModel, onTap: (String, String) -> Unit) 
                 colors = CardDefaults.cardColors(containerColor = rowColor)
             ) {
                 Column(Modifier.padding(12.dp)) {
-                    Text(h.activity, fontWeight = FontWeight.SemiBold)
+                    Text(h.activity, fontWeight = FontWeight.SemiBold, color = onCard)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(h.subject, style = MaterialTheme.typography.bodySmall)
-                        Text(dueLabel, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        Text(h.subject, style = MaterialTheme.typography.bodySmall, color = subCard)
+                        Text(dueLabel, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = onCard)
                     }
-                    if (h.completed) Text("Done", color = Color(0xFF2E7D32), style = MaterialTheme.typography.labelSmall)
+                    if (h.completed) Text("Done", color = doneColor, style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
@@ -617,10 +672,10 @@ fun HomeworkTab(ui: UiState, vm: AppViewModel, onTap: (String, String) -> Unit) 
             }
             if (showPast) {
                 items(hw.homework.past, key = { "past-" + it.idString() + it.due_date }) { h ->
-                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))) {
+                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if (theme.dark) Color(0xFF232C3D) else Color(0xFFF5F5F5))) {
                         Column(Modifier.padding(12.dp)) {
-                            Text(h.activity)
-                            Text("${h.subject} - was due ${h.due_date}", style = MaterialTheme.typography.bodySmall)
+                            Text(h.activity, color = onCard)
+                            Text("${h.subject} - was due ${h.due_date}", style = MaterialTheme.typography.bodySmall, color = subCard)
                         }
                     }
                 }

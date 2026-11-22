@@ -110,6 +110,18 @@ object ThemeStore {
     }
 }
 
+/** Homework state container tuned to the theme: pastel on light themes,
+ * deep and saturated on dark ones, hue leaned ~20% toward the accent so
+ * each theme's cards feel like its own. */
+fun ThemeSpec.hwContainer(hue: Float, sat: Float): Color {
+    val ah = FloatArray(3)
+    ColorUtils.colorToHSL(accent.toArgb(), ah)
+    val delta = ((ah[0] - hue + 540f) % 360f) - 180f
+    val h = (hue + delta * 0.2f + 360f) % 360f
+    return if (dark) Color(ColorUtils.HSLToColor(floatArrayOf(h, (sat * 0.8f).coerceIn(0f, 1f), 0.24f)))
+    else Color(ColorUtils.HSLToColor(floatArrayOf(h, sat.coerceIn(0f, 1f), 0.87f)))
+}
+
 /** Little four-dot palette, drawn so no icon dependency is needed. */
 @Composable
 fun PaletteIcon() {
