@@ -12,22 +12,23 @@ import androidx.compose.ui.unit.dp
 object VisualTuning {
     var systemReducedMotion by mutableStateOf(false)
     val motionStrength: Float get() = if (systemReducedMotion) 0f else parallax
-    var parallax by mutableFloatStateOf(1f)
-    var animationMs by mutableFloatStateOf(450f)
-    var refraction by mutableFloatStateOf(1f)
-    var glassAlpha by mutableFloatStateOf(1f)
+    // Defaults are his own tuned setup (screenshotted from v0.6.2, 11:47).
+    var parallax by mutableFloatStateOf(0.54f)
+    var animationMs by mutableFloatStateOf(254f)
+    var refraction by mutableFloatStateOf(2.87f)
+    var glassAlpha by mutableFloatStateOf(0.79f)
     var realGlass by mutableStateOf(true)
     var tapFeedback by mutableStateOf(true)
-    var sheetBlur by mutableFloatStateOf(20f)
+    var sheetBlur by mutableFloatStateOf(18f)
     fun load(context: Context) {
         val p = context.getSharedPreferences("visual-tuning", Context.MODE_PRIVATE)
-        parallax = p.getFloat("parallax", 1f).coerceIn(0f, 3f)
-        animationMs = p.getFloat("animationMs", 450f).coerceIn(100f, 1500f)
-        refraction = p.getFloat("refraction", 1f).coerceIn(0f, 3f)
-        glassAlpha = p.getFloat("glassAlpha", 1f).coerceIn(0.1f, 2f)
+        parallax = p.getFloat("parallax", 0.54f).coerceIn(0f, 3f)
+        animationMs = p.getFloat("animationMs", 254f).coerceIn(100f, 1500f)
+        refraction = p.getFloat("refraction", 2.87f).coerceIn(0f, 3f)
+        glassAlpha = p.getFloat("glassAlpha", 0.79f).coerceIn(0.1f, 2f)
         realGlass = p.getBoolean("realGlass", true)
         tapFeedback = p.getBoolean("tapFeedback", true)
-        sheetBlur = p.getFloat("sheetBlur", 20f).coerceIn(0f, 50f)
+        sheetBlur = p.getFloat("sheetBlur", 18f).coerceIn(0f, 50f)
     }
     fun save(context: Context) {
         context.getSharedPreferences("visual-tuning", Context.MODE_PRIVATE).edit()
@@ -37,8 +38,8 @@ object VisualTuning {
             .putFloat("sheetBlur", sheetBlur).apply()
     }
     fun reset() {
-        parallax = 1f; animationMs = 450f; refraction = 1f; glassAlpha = 1f
-        realGlass = true; tapFeedback = true; sheetBlur = 20f
+        parallax = 0.54f; animationMs = 254f; refraction = 2.87f; glassAlpha = 0.79f
+        realGlass = true; tapFeedback = true; sheetBlur = 18f
     }
 }
 

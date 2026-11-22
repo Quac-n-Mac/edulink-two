@@ -41,6 +41,13 @@ pub mod methods {
     pub const EXTERNAL_LINKS: &str = "EduLink.ExternalLinks";
     pub const REPORT_CARD: &str = "EduLink.ReportCard";
     pub const TEACHERS: &str = "EduLink.Teachers";
+    pub const FORMS: &str = "EduLink.Forms";
+    pub const FORM: &str = "EduLink.Form";
+    pub const ABSENCE_MANAGEMENT: &str = "EduLink.AbsenceManagement";
+    pub const DETENTION_SESSIONS: &str = "EduLink.DetentionSessions";
+    pub const DETENTION_SESSION: &str = "EduLink.DetentionSession";
+    pub const MOMENTS: &str = "EduLink.Moments";
+    pub const ASSESSMENT_GRIDS: &str = "EduLink.AssessmentGrids";
     /// Pre-login school resolution on the provisioning service.
     pub const SCHOOL_FROM_CODE: &str = "School.FromCode";
     /// Pre-login school metadata (name + crest) on the school's server.
@@ -400,7 +407,10 @@ impl<T: Transport> Client<T> {
             methods::SEATING_PLANS | methods::SEATING_PLAN | methods::REGISTERS |
             methods::REGISTER | methods::MEDICAL | methods::CATERING |
             methods::DOCUMENTS | methods::EXTERNAL_LINKS | methods::REPORT_CARD |
-            methods::TEACHERS), "method is not in the read-only surface allowlist");
+            methods::TEACHERS | methods::FORMS | methods::FORM |
+            methods::ABSENCE_MANAGEMENT | methods::DETENTION_SESSIONS |
+            methods::DETENTION_SESSION | methods::MOMENTS |
+            methods::ASSESSMENT_GRIDS), "method is not in the read-only surface allowlist");
         let mut v = self.transport.call(method, params).await?;
         if let Some(obj) = v.as_object_mut() {
             obj.remove("success");

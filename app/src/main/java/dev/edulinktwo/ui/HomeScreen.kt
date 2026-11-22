@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.EaseInOut
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.snap
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -148,9 +149,9 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     val hi = kotlin.math.ceil(slideIdx).toInt().coerceIn(0, navTabs.lastIndex)
     val baseStain = lerp(navStains[lo], navStains[hi], slideIdx - lo)
     val profFactor = (1f - kotlin.math.abs(slideIdx - 2f)).coerceIn(0f, 1f)
-    val stainAlpha = 0.4f * (1f - profFactor)
-    val pillH = 58.dp + 14.dp * profFactor
-    val pillPad = 10.dp * (1f - profFactor) + 1.5.dp * profFactor
+    val stainAlpha = 0.55f * (1f - profFactor)
+    val pillH = 62.dp + 14.dp * profFactor
+    val pillPad = 8.dp * (1f - profFactor) + 1.5.dp * profFactor
     val pillDrift = Modifier.graphicsLayer {
         translationY = (-tilt.y * 2.dp.toPx()) * VisualTuning.motionStrength
         translationX = (-tilt.x * 3.dp.toPx()) * VisualTuning.motionStrength
@@ -174,12 +175,14 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     }
 
     Box(Modifier.fillMaxSize()) {
+    val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val bgBlur = if (android.os.Build.VERSION.SDK_INT >= 31 && (anySheet || accountSheet || lessonSel != null))
         Modifier.graphicsLayer {
             renderEffect = android.graphics.RenderEffect.createBlurEffect(VisualTuning.sheetBlur.coerceAtLeast(0.1f), VisualTuning.sheetBlur.coerceAtLeast(0.1f), android.graphics.Shader.TileMode.CLAMP).asComposeRenderEffect()
         } else Modifier
     Column(Modifier.fillMaxSize().then(bgBlur).nestedScroll(scrollProbe).glassBackdrop(glassBackdrop, glassLayer, glassScope, 0.5f)) {
-        Box(Modifier.weight(1f).padding(top = 64.dp)) {
+        Box(Modifier.fillMaxSize().padding(top = 64.dp + statusTop, bottom = 88.dp + navBottom)) {
         // Layer 1 (deep): barely-there gradient + faint doodle texture.
         Box(
             Modifier
@@ -224,11 +227,14 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             }
         }
         }
-        // Do not use Material Surface here: its rectangular clip cuts off
-        // the raised profile avatar. This bar deliberately allows overflow.
-        Box(Modifier.then(nearDrift)
-            .shadow(barElev, ambientColor = softAmbient, spotColor = softSpot)
-            .background(MaterialTheme.colorScheme.surfaceContainer)
+    }
+    // Frosted white bottom bar floating over the content: strong blur,
+    // a whisper of refraction, soft letter edges bleed through. No clip,
+    // so the raised profile avatar escapes the bar.
+    Box(Modifier.align(Alignment.BottomCenter).then(nearDrift)
+            .shadow(barElev, clip = false, ambientColor = softAmbient, spotColor = softSpot)
+            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 4.dp, refrStrength = 3.dp, blurRadius = 14.dp, baseAlpha = 0.55f, stainColor = Color.White, stain = 0.5f)
+            .navigationBarsPadding()
             .onGloballyPositioned { navPos = it.positionInRoot(); navSize = it.size }) {
             Row(Modifier.fillMaxWidth().height(80.dp).pointerInput(navSize.width) {
                 val itemPx = navSize.width.toFloat() / navTabs.size
@@ -253,7 +259,6 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 GlassNavItem(ui.tab == Tab.POINTS, { vm.selectTab(Tab.POINTS) }, { Icon(Icons.Default.Star, null) }, "Points", Modifier.weight(1f))
                 GlassNavItem(ui.tab == Tab.MORE, { vm.selectTab(Tab.MORE) }, { Icon(Icons.Default.Menu, null) }, "More", Modifier.weight(1f))
             }
-        }
     }
 
     // The one shared stained-glass pill: slides to the tapped tab,
@@ -277,7 +282,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 .height(pillH)
                 .shadow(10.dp, RoundedCornerShape(pillH / 2), clip = false, ambientColor = baseStain, spotColor = baseStain)
                 .then(pillDrift)
-                .liquidGlass(glassBackdrop, cornerRadius = pillH / 2, edgeWidth = 7.dp, refrStrength = 7.dp, baseAlpha = 0.35f, stainColor = baseStain, stain = stainAlpha)
+                .liquidGlass(glassBackdrop, cornerRadius = pillH / 2, edgeWidth = 7.dp, refrStrength = 7.dp, baseAlpha = 0.42f, stainColor = baseStain, stain = stainAlpha)
         )
     }
 
@@ -287,8 +292,9 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         modifier = Modifier
             .align(Alignment.TopCenter)
             .then(nearDrift)
-            .shadow(barElev, ambientColor = softAmbient, spotColor = softSpot)
-            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 5.dp, refrStrength = 5.dp, blurRadius = 4.dp, baseAlpha = 0.65f),
+            .shadow(barElev, clip = false, ambientColor = softAmbient, spotColor = softSpot)
+            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 5.dp, refrStrength = 5.dp, blurRadius = 4.dp, baseAlpha = 0.65f)
+            .statusBarsPadding(),
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         title = {
             Column {
@@ -311,7 +317,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             onDismissRequest = { detail = null; detailLoading = false; detailError = null },
             containerColor = Color.Transparent
         ) {
-            Column(Modifier.clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f).padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f).padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
                 when {
                     detailLoading -> Text("Loading...", style = MaterialTheme.typography.bodyMedium)
                     detail == null -> Text(detailError ?: "could not load homework", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
@@ -358,13 +364,13 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
 
     lessonSel?.let { lesson ->
         ModalBottomSheet(onDismissRequest = { lessonSel = null }, containerColor = Color.Transparent) {
-            Column(Modifier.clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f)) { LessonSheet(ui, vm, lesson) }
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f)) { LessonSheet(ui, vm, lesson) }
         }
     }
 
     if (accountSheet) {
         ModalBottomSheet(onDismissRequest = { accountSheet = false }, containerColor = Color.Transparent) {
-            Column(Modifier.clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f).padding(bottom = 32.dp)) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f).padding(bottom = 32.dp)) {
                 Text("Profiles", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
                 ui.accounts.forEach { a ->
                     ListItem(
@@ -595,6 +601,17 @@ fun PointsTab(ui: UiState) {
 @Composable
 fun MoreTab(ui: UiState, vm: AppViewModel) {
     var section by remember { mutableStateOf<String?>(null) }
+    var pending by remember { mutableStateOf<String?>(null) }
+    val listFade = remember { Animatable(1f) }
+    LaunchedEffect(pending) {
+        if (pending != null) {
+            listFade.snapTo(1f)
+            listFade.animateTo(0f, tween(if (VisualTuning.systemReducedMotion) 0 else 200))
+            section = pending
+            pending = null
+            listFade.snapTo(1f)
+        }
+    }
     BackHandler(enabled = section != null) { section = null }
     when (section) {
         null -> {
@@ -611,7 +628,9 @@ fun MoreTab(ui: UiState, vm: AppViewModel) {
                 items += "Customisation"
                 items.forEach { name ->
                     item {
-                        Card(Modifier.fillMaxWidth().clickable { section = name }) {
+                        Card(Modifier.fillMaxWidth()
+                            .graphicsLayer { alpha = if (pending == null || name == pending) 1f else listFade.value }
+                            .clickable(enabled = pending == null) { pending = name }) {
                             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 if (name == "Customisation") {
                                     PaintbrushIcon()
@@ -644,12 +663,40 @@ fun MoreTab(ui: UiState, vm: AppViewModel) {
 
 @Composable
 private fun MoreSection(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
+    val progress = remember(title) { Animatable(0f) }
+    LaunchedEffect(title) {
+        progress.snapTo(0f)
+        progress.animateTo(1f, tween(if (VisualTuning.systemReducedMotion) 0 else 1000, easing = EaseInOut))
+    }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text("< More") }
-            Text(title, style = MaterialTheme.typography.titleLarge)
+            Row {
+                title.forEachIndexed { i, c ->
+                    val start = 0.05f + i * 0.035f
+                    val lp = ((progress.value - start) / 0.45f).coerceIn(0f, 1f)
+                    val ease = 1f - (1f - lp) * (1f - lp)
+                    Text(c.toString(), style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.graphicsLayer {
+                            alpha = lp
+                            translationY = (1f - ease) * 26.dp.toPx()
+                            val sc = 1.25f - 0.25f * ease
+                            scaleX = sc; scaleY = sc
+                            rotationZ = ((i % 3) - 1) * 5f * (1f - ease)
+                        })
+                }
+            }
         }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        val cp = ((progress.value - 0.25f) / 0.75f).coerceIn(0f, 1f)
+        LazyColumn(Modifier.fillMaxSize().graphicsLayer {
+            alpha = cp
+            val sc = 1.14f - 0.14f * cp
+            scaleX = sc; scaleY = sc
+            translationY = (1f - cp) * 48.dp.toPx()
+            renderEffect = if (android.os.Build.VERSION.SDK_INT >= 31 && (1f - cp) * 18f > 0.5f)
+                android.graphics.RenderEffect.createBlurEffect((1f - cp) * 18f, (1f - cp) * 18f, android.graphics.Shader.TileMode.CLAMP).asComposeRenderEffect()
+            else null
+        }, contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { content() }
         }
     }

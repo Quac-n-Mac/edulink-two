@@ -98,6 +98,13 @@ pub async fn demo_login(state_dir: PathBuf, cache_dir: PathBuf) -> Result<Value>
         ("externallinks", fixture!("externallinks.json")),
         ("reportcard", fixture!("reportcard.json")),
         ("teachers", fixture!("teachers.json")),
+        ("forms", fixture!("forms.json")),
+        ("form-demo", fixture!("form.json")),
+        ("absences-demo", fixture!("absence.json")),
+        ("detentions", fixture!("detentions.json")),
+        ("detention-demo", fixture!("detention.json")),
+        ("moments-demo", fixture!("moments.json")),
+        ("assessment-demo", fixture!("assessment.json")),
     ] {
         cache.write(name, &result_of(raw)?).await?;
     }

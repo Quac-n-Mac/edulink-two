@@ -2,6 +2,7 @@ package dev.edulinktwo
 
 import android.os.Bundle
 import android.graphics.Color
+import androidx.activity.enableEdgeToEdge
 import androidx.core.view.WindowInsetsControllerCompat
 import dev.edulinktwo.ui.TapFeedbackHost
 import dev.edulinktwo.ui.VisualTuning
@@ -22,8 +23,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         VisualTuning.load(this)
-        window.statusBarColor = Color.rgb(246, 247, 252)
-        window.navigationBarColor = Color.rgb(246, 247, 252)
+        enableEdgeToEdge()
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
         window.decorView.setBackgroundColor(Color.rgb(246, 247, 252))
         WindowInsetsControllerCompat(window, window.decorView).apply {
             isAppearanceLightStatusBars = true

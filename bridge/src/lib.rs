@@ -228,6 +228,16 @@ async fn do_fetch_raw(state_dir: PathBuf, cache_dir: PathBuf, name: String, meth
     let store = AccountStore::load(&state_dir)?;
     let session = store.current().context("not logged in")?.clone();
     let cache = Cache::new(&cache_dir)?.for_user(&session.key())?;
+    // Read surfaces identify the learner server-side; fill the identity
+    // params from the session so callers never carry them around.
+    let mut params = params;
+    if let Some(obj) = params.as_object_mut() {
+        obj.entry("learner_id").or_insert_with(|| json!(session.learner_id));
+        obj.entry("student_id").or_insert_with(|| json!(session.learner_id));
+        if method == "EduLink.AbsenceManagement" {
+            obj.entry("date").or_insert_with(|| json!(chrono_today()));
+        }
+    }
     if let Ok(text) = std::fs::read_to_string(cache_file(&cache, &name)) {
         let v: Value = serde_json::from_str(&text)?;
         if let Some(ts) = v.get("fetched_at").and_then(|t| t.as_str()) {
@@ -245,6 +255,20 @@ async fn do_fetch_raw(state_dir: PathBuf, cache_dir: PathBuf, name: String, meth
             Some("register-full")
         } else if method.starts_with("EduLink.SeatingPlan") {
             Some("seatingplan-full")
+        } else if method == "EduLink.Forms" {
+            Some("forms")
+        } else if method == "EduLink.Form" {
+            Some("form-demo")
+        } else if method == "EduLink.AbsenceManagement" {
+            Some("absences-demo")
+        } else if method == "EduLink.DetentionSessions" {
+            Some("detentions")
+        } else if method == "EduLink.DetentionSession" {
+            Some("detention-demo")
+        } else if method == "EduLink.Moments" {
+            Some("moments-demo")
+        } else if method == "EduLink.AssessmentGrids" {
+            Some("assessment-demo")
         } else {
             None
         };
