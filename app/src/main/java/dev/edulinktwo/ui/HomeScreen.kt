@@ -17,6 +17,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -176,13 +177,12 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
 
     Box(Modifier.fillMaxSize()) {
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val bgBlur = if (android.os.Build.VERSION.SDK_INT >= 31 && (anySheet || accountSheet || lessonSel != null))
         Modifier.graphicsLayer {
             renderEffect = android.graphics.RenderEffect.createBlurEffect(VisualTuning.sheetBlur.coerceAtLeast(0.1f), VisualTuning.sheetBlur.coerceAtLeast(0.1f), android.graphics.Shader.TileMode.CLAMP).asComposeRenderEffect()
         } else Modifier
     Column(Modifier.fillMaxSize().then(bgBlur).nestedScroll(scrollProbe).glassBackdrop(glassBackdrop, glassLayer, glassScope, 0.5f)) {
-        Box(Modifier.fillMaxSize().padding(top = 64.dp + statusTop, bottom = 88.dp + navBottom)) {
+        Box(Modifier.fillMaxSize()) {
         // Layer 1 (deep): barely-there gradient + faint doodle texture.
         Box(
             Modifier
@@ -201,7 +201,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         PullToRefreshBox(
             isRefreshing = ui.refreshing,
             onRefresh = { vm.refresh() },
-            modifier = Modifier.fillMaxSize().then(contentDrift)
+            modifier = Modifier.fillMaxSize().padding(top = 64.dp + statusTop).then(contentDrift)
         ) {
             // Fast transitions: 120ms, no slow fades.
             AnimatedContent(
@@ -236,6 +236,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 4.dp, refrStrength = 3.dp, blurRadius = 14.dp, baseAlpha = 0.55f, stainColor = Color.White, stain = 0.5f)
             .navigationBarsPadding()
             .onGloballyPositioned { navPos = it.positionInRoot(); navSize = it.size }) {
+            CompositionLocalProvider(LocalRippleConfiguration provides null) {
             Row(Modifier.fillMaxWidth().height(80.dp).pointerInput(navSize.width) {
                 val itemPx = navSize.width.toFloat() / navTabs.size
                 detectHorizontalDragGestures(
@@ -258,6 +259,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 }
                 GlassNavItem(ui.tab == Tab.POINTS, { vm.selectTab(Tab.POINTS) }, { Icon(Icons.Default.Star, null) }, "Points", Modifier.weight(1f))
                 GlassNavItem(ui.tab == Tab.MORE, { vm.selectTab(Tab.MORE) }, { Icon(Icons.Default.Menu, null) }, "More", Modifier.weight(1f))
+            }
             }
     }
 
@@ -411,7 +413,7 @@ fun ProfileNavButton(ui: UiState, vm: AppViewModel, onTap: () -> Unit, onLong: (
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.primary)
             .border(2.dp, Color.White, CircleShape)
-            .combinedClickable(onClick = onTap, onLongClick = onLong),
+            .combinedClickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onTap, onLongClick = onLong),
         contentAlignment = Alignment.Center
     ) {
         if (avatar != null) {
@@ -434,7 +436,7 @@ fun HomeworkTab(ui: UiState, vm: AppViewModel, onTap: (String, String) -> Unit) 
     }
     var showPast by remember { mutableStateOf(false) }
     val today = LocalDate.now()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { Text("Current", style = MaterialTheme.typography.titleMedium) }
         items(hw.homework.current, key = { "cur-" + it.idString() + it.due_date }) { h ->
             val due = runCatching { LocalDate.parse(h.due_date.take(10)) }.getOrNull()
@@ -505,7 +507,7 @@ fun TimetableTab(ui: UiState, onLessonTap: (Lesson) -> Unit = {}) {
         return
     }
     val today = LocalDate.now().toString()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         tb.weeks.forEach { week ->
             week.days.forEach { day ->
                 item {
@@ -546,7 +548,7 @@ fun PointsTab(ui: UiState) {
     }
     val aPts = a.achievement.sumOf { it.points }
     val bPts = b.behaviour.sumOf { it.points }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             Card(Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -615,7 +617,7 @@ fun MoreTab(ui: UiState, vm: AppViewModel) {
     BackHandler(enabled = section != null) { section = null }
     when (section) {
         null -> {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 val items = mutableListOf("Attendance", "Notices", "Exams", "Calendar", "Clubs")
                 if (ui.inbox != null || ui.outbox != null) items += "Messages"
                 if (ui.registers != null) items += "Registers"
@@ -696,7 +698,7 @@ private fun MoreSection(title: String, onBack: () -> Unit, content: @Composable 
             renderEffect = if (android.os.Build.VERSION.SDK_INT >= 31 && (1f - cp) * 18f > 0.5f)
                 android.graphics.RenderEffect.createBlurEffect((1f - cp) * 18f, (1f - cp) * 18f, android.graphics.Shader.TileMode.CLAMP).asComposeRenderEffect()
             else null
-        }, contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        }, contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { content() }
         }
     }
@@ -885,7 +887,7 @@ fun ProfileTab(ui: UiState, vm: AppViewModel) {
     val avatar = remember(ui.currentAccount) {
         vm.avatarFile(ui.currentAccount)?.let { BitmapFactory.decodeFile(it.absolutePath)?.asImageBitmap() }
     }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
