@@ -29,10 +29,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.graphics.rememberGraphicsLayer
-import kotlinx.coroutines.delay
 import dev.edulinktwo.*
 import java.time.LocalDate
 
@@ -45,25 +41,6 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     var detailError by remember { mutableStateOf<String?>(null) }
     var attachmentBusy by remember { mutableStateOf(false) }
 
-    // Liquid glass plumbing: the content below the floating bars is the
-    // backdrop texture the lens shader refracts.
-    val glassBackdrop = remember { GlassBackdrop() }
-    val tilt by rememberTilt()
-    val glassLight: () -> androidx.compose.ui.geometry.Offset = {
-        val x = -0.55f + tilt.x * 0.8f
-        val y = -0.83f + tilt.y * 0.5f
-        val len = kotlin.math.hypot(x, y)
-        androidx.compose.ui.geometry.Offset(x / len, y / len)
-    }
-    val glassLayer = rememberGraphicsLayer()
-    val glassScope = rememberCoroutineScope()
-    LaunchedEffect(ui.tab, ui.lastUpdated) { glassBackdrop.captureVersion++ }
-    LaunchedEffect(detail != null || detailLoading) { glassBackdrop.captureVersion++ }
-    LaunchedEffect(Unit) {
-        // periodic refresh keeps the backdrop fresh while lists scroll
-        while (true) { delay(900); glassBackdrop.captureVersion++ }
-    }
-
     // Back gesture: sheets dismiss first, then tabs pop to root; the system
     // only exits the app at the root tab.
     val anySheet = detail != null || detailLoading || detailError != null
@@ -71,8 +48,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     BackHandler(enabled = accountSheet) { accountSheet = false }
     BackHandler(enabled = !anySheet && !accountSheet && ui.tab != Tab.HOMEWORK) { vm.selectTab(Tab.HOMEWORK) }
 
-    Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).glassBackdrop(glassBackdrop, glassLayer, glassScope)) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             TopAppBar(
                 title = {
                     Column {
@@ -91,7 +67,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         PullToRefreshBox(
             isRefreshing = ui.refreshing,
             onRefresh = { vm.refresh() },
-            modifier = Modifier.weight(1f).padding(bottom = 88.dp)
+            modifier = Modifier.weight(1f)
         ) {
             // Fast transitions: 120ms, no slow fades.
             AnimatedContent(
@@ -116,19 +92,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 }
             }
         }
-        }
-
-        // Floating liquid-glass tab bar (navigation layer, per Apple HIG)
-        Row(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(horizontal = 14.dp, vertical = 10.dp)
-                .fillMaxWidth()
-                .liquidGlass(glassBackdrop, cornerRadius = 30.dp, edgeWidth = 12.dp, refrStrength = 12.dp, baseAlpha = 0.5f, lightDir = glassLight)
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        NavigationBar {
             NavigationBarItem(ui.tab == Tab.HOMEWORK, { vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, label = { Text("Homework") })
             NavigationBarItem(ui.tab == Tab.TIMETABLE, { vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, label = { Text("Timetable") })
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -141,16 +105,8 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
 
     if (detail != null || detailLoading || detailError != null) {
         ModalBottomSheet(
-            onDismissRequest = { detail = null; detailLoading = false; detailError = null },
-            containerColor = Color.Transparent,
-            dragHandle = null
+            onDismissRequest = { detail = null; detailLoading = false; detailError = null }
         ) {
-            Box(
-                Modifier
-                    .padding(horizontal = 12.dp)
-                    .padding(bottom = 20.dp)
-                    .liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 14.dp, refrStrength = 14.dp, baseAlpha = 0.62f, lightDir = glassLight, useWindowPos = true)
-            ) {
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
                 when {
                     detailLoading -> Text("Loading...", style = MaterialTheme.typography.bodyMedium)
@@ -192,7 +148,6 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                         detailError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                     }
                 }
-            }
             }
         }
     }

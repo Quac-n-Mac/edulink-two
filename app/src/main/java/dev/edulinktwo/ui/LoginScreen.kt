@@ -56,19 +56,9 @@ fun LoginScreen(ui: UiState, vm: AppViewModel) {
     var school by remember { mutableStateOf<SchoolResolveResult?>(null) }
     var schoolCode by remember { mutableStateOf("") }
 
-    // Liquid glass backdrop: the gradient + doodle behind the controls.
-    val glassBackdrop = remember { GlassBackdrop() }
-    val glassLayer = rememberGraphicsLayer()
-    val glassScope = rememberCoroutineScope()
     val tilt by rememberTilt()
-    val glassLight: () -> androidx.compose.ui.geometry.Offset = {
-        val x = -0.55f + tilt.x * 0.8f
-        val y = -0.83f + tilt.y * 0.5f
-        val len = kotlin.math.hypot(x, y)
-        androidx.compose.ui.geometry.Offset(x / len, y / len)
-    }
 
-    Box(modifier = Modifier.fillMaxSize().glassBackdrop(glassBackdrop, glassLayer, glassScope)) {
+    Box(modifier = Modifier.fillMaxSize()) {
         // 1:1 background: gradient + the original doodle overlay.
         val parallax = Modifier.fillMaxSize().graphicsLayer {
             // deep layer: counter-translate slightly against tilt, oversized to hide edges
@@ -95,8 +85,6 @@ fun LoginScreen(ui: UiState, vm: AppViewModel) {
             )
             LoginStep.CODE -> SchoolCodeStep(
                 hasAccounts = ui.accounts.isNotEmpty(),
-                backdrop = glassBackdrop,
-                lightDir = glassLight,
                 onBack = { step = LoginStep.PICKER },
                 onResolved = { code, result ->
                     schoolCode = code
@@ -108,8 +96,6 @@ fun LoginScreen(ui: UiState, vm: AppViewModel) {
             LoginStep.CREDENTIALS -> CredentialsStep(
                 school = school!!,
                 schoolCode = schoolCode,
-                backdrop = glassBackdrop,
-                lightDir = glassLight,
                 onBack = { step = LoginStep.CODE },
                 vm = vm
             )
