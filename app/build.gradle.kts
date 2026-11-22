@@ -13,8 +13,8 @@ android {
         applicationId = "dev.edulinktwo"
         minSdk = 26
         targetSdk = 34
-        versionCode = 15
-        versionName = "0.5.1"
+        versionCode = 16
+        versionName = "0.5.2"
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 
@@ -23,9 +23,12 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Debug signature unless CI injects the real keystore: lets the
-            // nightly ship the R8-optimized release build (smooth scrolling).
-            signingConfig = signingConfigs.getByName("debug")
+            // Debug signature for local builds; on CI the injected keystore
+            // properties sign instead (AGP only applies them when no
+            // signingConfig is set here).
+            if (!project.hasProperty("android.injected.signing.store.file")) {
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
         debug {
             isMinifyEnabled = false
