@@ -77,7 +77,9 @@ half4 main(float2 fragCoord) {
     float2 normal = grad * rimT;
 
     // refraction offsets, in backdrop-texture px
-    float2 off = normal * refrStrength * glassScale;
+    // inward sampling: a convex lens magnifies, so nothing outside the
+    // shape can ever appear inside it (hard containment at the rim)
+    float2 off = -normal * refrStrength * glassScale;
     float2 base = (surfacePos + fragCoord) * glassScale;
 
     // chromatic dispersion: R and B refract more/less than G
@@ -116,7 +118,7 @@ half4 main(float2 fragCoord) {
     float inner = (1.0 - rimT) * smoothstep(-edgeWidth * 2.5, -edgeWidth * 0.4, d);
     col *= 1.0 - inner * max(dot(grad, -lightDir), 0.0) * 0.12;
 
-    float alpha = (1.0 - smoothstep(-0.5, 0.5, d)) * baseAlpha * aC;
+    float alpha = (1.0 - smoothstep(-1.2, -0.2, d)) * baseAlpha * aC;
     return half4(col * alpha, alpha);
 }
 """
@@ -129,6 +131,7 @@ class GlassBackdrop {
     /** bump to request a fresh capture */
     var captureVersion by mutableIntStateOf(0)
     internal var capturedVersion by mutableLongStateOf(-1)
+    internal var captureInFlight = false
 }
 
 /**
@@ -142,15 +145,27 @@ fun Modifier.glassBackdrop(
     scope: CoroutineScope,
     scale: Float = 1.0f
 ): Modifier = this.onGloballyPositioned { backdrop.rootWinPos = it.positionInWindow() }.drawWithContent {
-    if (backdrop.capturedVersion < backdrop.captureVersion) {
-        layer.record(androidx.compose.ui.unit.IntSize(size.width.toInt(), size.height.toInt())) {
-            this@drawWithContent.drawContent()
+    if (!backdrop.captureInFlight && backdrop.capturedVersion < backdrop.captureVersion) {
+        backdrop.captureInFlight = true
+        // record DOWNSCALED: the shader's glassScale maps root px -> texture
+        // px, so the texture must actually be scale * size, else every glass
+        // surface samples content from the wrong region of the screen
+        val w = (size.width * scale).toInt().coerceAtLeast(1)
+        val h = (size.height * scale).toInt().coerceAtLeast(1)
+        layer.record(androidx.compose.ui.unit.IntSize(w, h)) {
+            androidx.compose.ui.graphics.drawscope.scale(scale, scale, Offset.Zero) {
+                this@drawWithContent.drawContent()
+            }
         }
         val v = backdrop.captureVersion
         scope.launch {
-            backdrop.scale = scale
-            backdrop.bitmap = layer.toImageBitmap()
-            backdrop.capturedVersion = v.toLong()
+            val bmp = layer.toImageBitmap()
+            if (v.toLong() >= backdrop.capturedVersion) {
+                backdrop.scale = scale
+                backdrop.bitmap = bmp
+            }
+            backdrop.capturedVersion = maxOf(backdrop.capturedVersion, v.toLong())
+            backdrop.captureInFlight = false
         }
     }
     drawContent()

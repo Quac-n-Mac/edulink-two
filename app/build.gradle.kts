@@ -13,8 +13,8 @@ android {
         applicationId = "dev.edulinktwo"
         minSdk = 26
         targetSdk = 34
-        versionCode = 23
-        versionName = "0.6.0"
+        versionCode = 24
+        versionName = "0.6.1"
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 

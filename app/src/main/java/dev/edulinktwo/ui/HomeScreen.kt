@@ -31,6 +31,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -139,15 +140,16 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     val hi = kotlin.math.ceil(slideIdx).toInt().coerceIn(0, navTabs.lastIndex)
     val baseStain = lerp(navStains[lo], navStains[hi], slideIdx - lo)
     val profFactor = (1f - kotlin.math.abs(slideIdx - 2f)).coerceIn(0f, 1f)
-    val stainAlpha = 0.26f * (1f - profFactor)
-    val pillH = 56.dp + 14.dp * profFactor
-    val pillPad = 14.dp * (1f - profFactor) + 2.dp * profFactor
+    val stainAlpha = 0.4f * (1f - profFactor)
+    val pillH = 58.dp + 14.dp * profFactor
+    val pillPad = 10.dp * (1f - profFactor) + 1.5.dp * profFactor
     val pillDrift = Modifier.graphicsLayer {
         translationY = -tilt.y * 2.dp.toPx()
         translationX = -tilt.x * 3.dp.toPx()
     }
     var navPos by remember { mutableStateOf(Offset.Zero) }
     var navSize by remember { mutableStateOf(IntSize(1, 1)) }
+    var avatarCenterY by remember { mutableStateOf<Float?>(null) }
 
     // Recapture triggers: page change, data refresh, every slide
     // animation frame, and whenever scrolling settles.
@@ -164,7 +166,11 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     }
 
     Box(Modifier.fillMaxSize()) {
-    Column(Modifier.fillMaxSize().nestedScroll(scrollProbe).glassBackdrop(glassBackdrop, glassLayer, glassScope, 0.5f)) {
+    val bgBlur = if (android.os.Build.VERSION.SDK_INT >= 31 && (anySheet || accountSheet || lessonSel != null))
+        Modifier.graphicsLayer {
+            renderEffect = android.graphics.RenderEffect.createBlurEffect(20f, 20f, android.graphics.Shader.TileMode.CLAMP).asComposeRenderEffect()
+        } else Modifier
+    Column(Modifier.fillMaxSize().then(bgBlur).nestedScroll(scrollProbe).glassBackdrop(glassBackdrop, glassLayer, glassScope, 0.5f)) {
         Box(Modifier.weight(1f).padding(top = 64.dp)) {
         // Layer 1 (deep): barely-there gradient + faint doodle texture.
         Box(
@@ -215,7 +221,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 GlassNavItem(ui.tab == Tab.HOMEWORK, { vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, "Homework", Modifier.weight(1f))
                 GlassNavItem(ui.tab == Tab.TIMETABLE, { vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, "Timetable", Modifier.weight(1f))
                 Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    ProfileNavButton(ui, vm, onTap = { vm.selectTab(Tab.PROFILE) }, onLong = { accountSheet = true })
+                    ProfileNavButton(ui, vm, onTap = { vm.selectTab(Tab.PROFILE) }, onLong = { accountSheet = true }, onPlaced = { avatarCenterY = it })
                 }
                 GlassNavItem(ui.tab == Tab.POINTS, { vm.selectTab(Tab.POINTS) }, { Icon(Icons.Default.Star, null) }, "Points", Modifier.weight(1f))
                 GlassNavItem(ui.tab == Tab.MORE, { vm.selectTab(Tab.MORE) }, { Icon(Icons.Default.Menu, null) }, "More", Modifier.weight(1f))
@@ -232,8 +238,9 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     if (navSize.width > 1) {
         val itemW = with(density) { (navSize.width / navTabs.size).toDp() }
         val navY = with(density) { navPos.y.toDp() }
-        val navH = with(density) { navSize.height.toDp() }
-        val centerY = navY + navH / 2 - 8.dp * profFactor
+        val itemCenterY = navY + 40.dp // items live in the fixed 80dp Row; navSize.height includes the gesture inset
+        val profCenterY = avatarCenterY?.let { with(density) { it.toDp() } } ?: (itemCenterY - 16.dp)
+        val centerY = itemCenterY + (profCenterY - itemCenterY) * profFactor
         Box(
             Modifier
                 .offset(x = itemW * slideIdx + pillPad, y = centerY - pillH / 2)
@@ -241,7 +248,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 .height(pillH)
                 .shadow(10.dp, RoundedCornerShape(pillH / 2), clip = false, ambientColor = baseStain, spotColor = baseStain)
                 .then(pillDrift)
-                .liquidGlass(glassBackdrop, cornerRadius = pillH / 2, edgeWidth = 7.dp, refrStrength = 7.dp, baseAlpha = 0.5f, stainColor = baseStain, stain = stainAlpha)
+                .liquidGlass(glassBackdrop, cornerRadius = pillH / 2, edgeWidth = 7.dp, refrStrength = 7.dp, baseAlpha = 0.35f, stainColor = baseStain, stain = stainAlpha)
         )
     }
 
@@ -357,14 +364,15 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ProfileNavButton(ui: UiState, vm: AppViewModel, onTap: () -> Unit, onLong: () -> Unit) {
+fun ProfileNavButton(ui: UiState, vm: AppViewModel, onTap: () -> Unit, onLong: () -> Unit, onPlaced: (Float) -> Unit = {}) {
     val avatar = remember(ui.currentAccount) {
         vm.avatarFile(ui.currentAccount)?.let { BitmapFactory.decodeFile(it.absolutePath)?.asImageBitmap() }
     }
     Box(
         modifier = Modifier
-            .offset(y = (-8).dp)
-            .size(56.dp)
+            .offset(y = (-16).dp)
+            .onGloballyPositioned { onPlaced(it.positionInRoot().y + it.size.height / 2f) }
+            .size(66.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.primary)
             .border(2.dp, Color.White, CircleShape)
@@ -398,12 +406,13 @@ fun HomeworkTab(ui: UiState, vm: AppViewModel, onTap: (String, String) -> Unit) 
             val days = due?.toEpochDay()?.minus(today.toEpochDay())?.toInt()
             val rowColor = when {
                 h.completed -> Color(0xFFC8E6C9) // done: green
-                days != null && days <= 0 -> Color(0xFFFFCDD2) // due today/overdue: red
+                days != null && days <= 0 && days > -730 -> Color(0xFFFFCDD2) // due today/overdue: red
                 days == 1 -> Color(0xFFFFE0B2) // due tomorrow: orange
                 else -> Color(0xFFECEFF1) // 2+ days: grey
             }
             val dueLabel = when {
                 days == null -> "due ${h.due_date}"
+                kotlin.math.abs(days) > 730 -> "due ${h.due_date.take(10)}" // live API sometimes returns garbage years
                 days < 0 -> "${-days}d overdue"
                 days == 0 -> "due today"
                 days == 1 -> "due tomorrow"
