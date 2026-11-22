@@ -97,6 +97,8 @@ pub enum Cmd {
     Me,
     /// Messages (read-only inbox listing; never marks anything read).
     Msg,
+    /// Raw read-only method call (diagnostics): `edulink raw EduLink.Registers '{"learner_id":"1"}'`.
+    Raw { method: String, params: Option<String> },
     /// Full-screen terminal UI.
     Tui,
 }
@@ -384,6 +386,17 @@ async fn run_with<T: Transport + 'static>(args: &Args, client: Client<T>, sessio
     let learner = session.learner_id.clone();
 
     match &args.cmd {
+        Cmd::Raw { method, params } => {
+            let p: serde_json::Value = match params {
+                Some(t) => serde_json::from_str(t)?,
+                None => serde_json::json!({}),
+            };
+            match client.raw(method, p).await {
+                Ok(v) => println!("{}", serde_json::to_string_pretty(&v)?),
+                Err(e) => println!("ERROR: {e:#}"),
+            }
+            return Ok(());
+        }
         Cmd::Sync => {
             if args.offline {
                 println!("offline - nothing to sync");

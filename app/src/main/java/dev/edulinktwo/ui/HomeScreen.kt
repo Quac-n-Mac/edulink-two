@@ -74,27 +74,29 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         }
     }
     LaunchedEffect(ui.tab) { scrollPx = 0f }
-    val barElev = if (scrollPx > 6f) 6.dp else 0.dp
+    val barElev = if (scrollPx > 6f) 7.dp else 3.dp
+    val softAmbient = Color.Black.copy(alpha = 0.08f)
+    val softSpot = Color.Black.copy(alpha = 0.10f)
 
     // His 4-layer stack, far to near, each counter-shifting more than
     // the last: background -> page content -> detail sheets -> bars.
     val drift = Modifier.graphicsLayer {
-        scaleX = 1.3f; scaleY = 1.3f
-        rotationZ = tilt.x * 2.5f
-        translationY = -scrollPx * 0.18f + tilt.y * 24.dp.toPx()
-        translationX = tilt.x * 36.dp.toPx()
+        scaleX = 1.25f; scaleY = 1.25f
+        rotationZ = tilt.x * 1.2f
+        translationY = -scrollPx * 0.18f + tilt.y * 12.dp.toPx()
+        translationX = tilt.x * 18.dp.toPx()
     }
     val contentDrift = Modifier.graphicsLayer {
-        translationY = -tilt.y * 34.dp.toPx()
-        translationX = -tilt.x * 54.dp.toPx()
+        translationY = -tilt.y * 18.dp.toPx()
+        translationX = -tilt.x * 28.dp.toPx()
     }
     val sheetDrift = Modifier.graphicsLayer {
-        translationY = -tilt.y * 46.dp.toPx()
-        translationX = -tilt.x * 72.dp.toPx()
+        translationY = -tilt.y * 24.dp.toPx()
+        translationX = -tilt.x * 36.dp.toPx()
     }
     val nearDrift = Modifier.graphicsLayer {
-        translationY = -tilt.y * 62.dp.toPx()
-        translationX = -tilt.x * 96.dp.toPx()
+        translationY = -tilt.y * 32.dp.toPx()
+        translationX = -tilt.x * 48.dp.toPx()
     }
 
     Box(Modifier.fillMaxSize().nestedScroll(scrollProbe)) {
@@ -119,7 +121,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         // Layers 2+4: content scrolls between the bars; bars ride nearest.
         Column(Modifier.fillMaxSize()) {
             TopAppBar(
-                modifier = Modifier.then(nearDrift).shadow(barElev),
+                modifier = Modifier.then(nearDrift).shadow(barElev, ambientColor = softAmbient, spotColor = softSpot),
                 title = {
                     Column {
                         Text("Edulink Two")
@@ -162,7 +164,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 }
             }
         }
-        NavigationBar(modifier = Modifier.then(nearDrift).shadow(barElev)) {
+        NavigationBar(modifier = Modifier.then(nearDrift).shadow(barElev, ambientColor = softAmbient, spotColor = softSpot)) {
             NavigationBarItem(ui.tab == Tab.HOMEWORK, { vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, label = { Text("Homework") })
             NavigationBarItem(ui.tab == Tab.TIMETABLE, { vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, label = { Text("Timetable") })
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -464,7 +466,16 @@ fun MoreTab(ui: UiState, vm: AppViewModel) {
     when (section) {
         null -> {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf("Attendance", "Notices", "Exams", "Calendar", "Clubs", "Messages", "Registers", "Seating Plans", "Catering", "Documents", "Links", "Medical", "Teachers").forEach { name ->
+                val items = mutableListOf("Attendance", "Notices", "Exams", "Calendar", "Clubs")
+                if (ui.inbox != null || ui.outbox != null) items += "Messages"
+                if (ui.registers != null) items += "Registers"
+                if (ui.seatingPlans != null) items += "Seating Plans"
+                if (ui.catering != null) items += "Catering"
+                if (ui.documents != null) items += "Documents"
+                if (ui.externalLinks != null) items += "Links"
+                if (ui.medical != null) items += "Medical"
+                if (ui.teachers != null) items += "Teachers"
+                items.forEach { name ->
                     item {
                         Card(Modifier.fillMaxWidth().clickable { section = name }) {
                             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {

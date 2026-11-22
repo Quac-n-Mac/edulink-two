@@ -81,12 +81,32 @@ jobs:
           name: edulink-two-apk
           path: out/
 
-      - name: Publish prerelease
+      - name: Read app version
+        id: ver
+        run: |
+          VN=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          VC=$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts)
+          echo "name=$VN" >> "$GITHUB_OUTPUT"
+          echo "code=$VC" >> "$GITHUB_OUTPUT"
+
+      - name: Publish versioned prerelease
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.name }}
+          name: Edulink Two v${{ steps.ver.outputs.name }} (build ${{ steps.ver.outputs.code }})
+          prerelease: true
+          files: out/edulink-two.apk
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Keep the always-latest nightly pointer updated
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.1.0-nightly
-          name: Edulink Two v0.1.0 (nightly)
+          name: Edulink Two nightly (currently v${{ steps.ver.outputs.name }}, build ${{ steps.ver.outputs.code }})
           prerelease: true
           files: out/edulink-two.apk
           fail_on_unmatched_files: false

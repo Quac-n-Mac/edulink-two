@@ -62,10 +62,10 @@ fun LoginScreen(ui: UiState, vm: AppViewModel) {
         // 1:1 background: gradient + the original doodle overlay.
         val parallax = Modifier.fillMaxSize().graphicsLayer {
             // deep layer: drifts WITH rotation, oversized to hide edges
-            scaleX = 1.3f; scaleY = 1.3f
-            rotationZ = tilt.x * 2.5f
-            translationX = tilt.x * 60.dp.toPx()
-            translationY = tilt.y * 44.dp.toPx()
+            scaleX = 1.25f; scaleY = 1.25f
+            rotationZ = tilt.x * 1.2f
+            translationX = tilt.x * 32.dp.toPx()
+            translationY = tilt.y * 24.dp.toPx()
         }
         Box(
             modifier = parallax
@@ -81,8 +81,8 @@ fun LoginScreen(ui: UiState, vm: AppViewModel) {
         // Foreground counter-shift: cards/buttons move against the
         // background so the depth separation reads on slight rotation.
         val fg = Modifier.graphicsLayer {
-            translationX = -tilt.x * 40.dp.toPx()
-            translationY = -tilt.y * 28.dp.toPx()
+            translationX = -tilt.x * 20.dp.toPx()
+            translationY = -tilt.y * 14.dp.toPx()
         }
         Box(Modifier.fillMaxSize().then(fg)) {
         when (step) {

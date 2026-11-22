@@ -408,25 +408,25 @@ impl<T: Transport> Client<T> {
     /// Secondary surfaces fetched as raw JSON: the UI parses what it
     /// needs. Never fails wholesale; each surface carries its error.
     pub async fn prefetch_extra(&self, learner_id: &str) -> Vec<(&'static str, Result<Value>)> {
-        let (outbox, registers, plans, medical, catering, docs, links, report, teachers) = tokio::join!(
+        // Param shapes verified against the stock app's bundle:
+        // medical wants format 3; teachers wants id filters. Registers is
+        // teacher-side ({date, employee_id}), report cards need a card id:
+        // neither exists for a student login, so they are not prefetched.
+        let (outbox, plans, medical, catering, docs, links, teachers) = tokio::join!(
             timed(self.outbox()),
-            timed(self.raw(methods::REGISTERS, json!({"learner_id": learner_id, "format": 2}))),
             timed(self.raw(methods::SEATING_PLANS, json!({"learner_id": learner_id, "format": 2}))),
-            timed(self.raw(methods::MEDICAL, json!({"learner_id": learner_id, "format": 2}))),
+            timed(self.raw(methods::MEDICAL, json!({"learner_id": learner_id, "format": 3}))),
             timed(self.raw(methods::CATERING, json!({"learner_id": learner_id, "format": 2}))),
             timed(self.raw(methods::DOCUMENTS, json!({"learner_id": learner_id, "format": 2}))),
             timed(self.raw(methods::EXTERNAL_LINKS, json!({"learner_id": learner_id, "format": 2}))),
-            timed(self.raw(methods::REPORT_CARD, json!({"learner_id": learner_id, "format": 2}))),
-            timed(self.raw(methods::TEACHERS, json!({"format": 2}))),
+            timed(self.raw(methods::TEACHERS, json!({"learner_ids": [learner_id], "format": 2}))),
         );
         let mut out: Vec<(&'static str, Result<Value>)> = vec![
-            ("registers", registers.0),
             ("seatingplans", plans.0),
             ("medical", medical.0),
             ("catering", catering.0),
             ("documents", docs.0),
             ("externallinks", links.0),
-            ("reportcard", report.0),
             ("teachers", teachers.0),
         ];
         out.push(("outbox", outbox.0.map(|d| serde_json::to_value(d).unwrap_or(Value::Null))));
