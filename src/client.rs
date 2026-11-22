@@ -25,6 +25,7 @@ pub mod methods {
     pub const ATTENDANCE: &str = "EduLink.Attendance";
     pub const EXAMS: &str = "EduLink.Exams";
     pub const NOTICEBOARD: &str = "EduLink.Noticeboard";
+    pub const NOTICEBOARD_FILE: &str = "EduLink.NoticeboardFile";
     pub const CALENDAR: &str = "EduLink.Calendar";
     pub const CLUBS: &str = "EduLink.Clubs";
     pub const PERSONAL: &str = "EduLink.Personal";
@@ -241,6 +242,18 @@ impl<T: Transport> Client<T> {
             )
             .await?;
         Ok(v.get("attachment").cloned().unwrap_or(v))
+    }
+
+    /// Fetch one noticeboard document (base64 content inside `document`).
+    pub async fn noticeboard_file(&self, id: &str) -> Result<Value> {
+        let v = self
+            .transport
+            .call(
+                methods::NOTICEBOARD_FILE,
+                json!({"id": id, "format": 2}),
+            )
+            .await?;
+        Ok(v.get("document").cloned().unwrap_or(v))
     }
 
     pub async fn timetable(&self, learner_id: &str, date: &str) -> Result<TimetableData> {

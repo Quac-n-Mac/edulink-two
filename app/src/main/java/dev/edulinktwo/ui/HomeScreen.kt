@@ -93,7 +93,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                     }
                     Tab.TIMETABLE -> TimetableTab(ui)
                     Tab.POINTS -> PointsTab(ui)
-                    Tab.MORE -> MoreTab(ui)
+                    Tab.MORE -> MoreTab(ui, vm)
                     Tab.PROFILE -> ProfileTab(ui, vm)
                 }
             }
@@ -376,90 +376,175 @@ fun PointsTab(ui: UiState) {
 
 
 @Composable
-fun MoreTab(ui: UiState) {
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { Text("Attendance", style = MaterialTheme.typography.titleMedium) }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    val att = ui.attendance
-                    if (att == null) { Text("No attendance cached yet.") }
-                    else {
-                        att.today?.sessions?.forEach { s ->
-                            Text("${s.session}: ${s.mark?.name ?: "?"}" + if (s.minutes_late > 0) " (${s.minutes_late} min late)" else "")
-                        }
-                        val p = att.statutory.sumOf { it.values["present"] ?: 0 }
-                        val a = att.statutory.sumOf { (it.values["absent"] ?: 0) + (it.values["unauthorised"] ?: 0) }
-                        if (p + a > 0) {
-                            Text("%.1f%% present".format(100.0 * p / (p + a)), fontWeight = FontWeight.Bold)
-                        }
-                        att.lesson.take(8).forEach { l ->
-                            val lp = l.values["present"] ?: 0
-                            val la = (l.values["absent"] ?: 0) + (l.values["unauthorised"] ?: 0)
-                            Text("${l.subject}: $lp present, $la absent", style = MaterialTheme.typography.bodySmall)
+fun MoreTab(ui: UiState, vm: AppViewModel) {
+    var section by remember { mutableStateOf<String?>(null) }
+    when (section) {
+        null -> {
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf("Attendance", "Notices", "Exams", "Calendar", "Clubs").forEach { name ->
+                    item {
+                        Card(Modifier.fillMaxWidth().clickable { section = name }) {
+                            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                                Text(">", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                 }
             }
         }
-        item { Text("Exams", style = MaterialTheme.typography.titleMedium) }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    val ex = ui.exams
-                    if (ex == null) { Text("No exams cached yet.") }
-                    else {
-                        ex.countdown?.let { Text("Next exam: ${it.exam} in ${it.minutes_to_go / 1440} days", fontWeight = FontWeight.Bold) }
-                        ex.timetable.forEach { e ->
-                            Text("${e.datetime}  ${e.title}  ${e.room ?: ""} ${e.seat ?: ""}", style = MaterialTheme.typography.bodySmall)
-                        }
-                        ex.results.forEach { r ->
-                            Text("${r.date}  ${r.title}: ${r.result}", style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
+        "Attendance" -> MoreSection(title = "Attendance", onBack = { section = null }) { AttendanceSection(ui) }
+        "Notices" -> MoreSection(title = "Notices", onBack = { section = null }) { NoticesSection(ui, vm) }
+        "Exams" -> MoreSection(title = "Exams", onBack = { section = null }) { ExamsSection(ui) }
+        "Calendar" -> MoreSection(title = "Calendar", onBack = { section = null }) { CalendarSection(ui) }
+        "Clubs" -> MoreSection(title = "Clubs", onBack = { section = null }) { ClubsSection(ui) }
+    }
+}
+
+@Composable
+private fun MoreSection(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onBack) { Text("< More") }
+            Text(title, style = MaterialTheme.typography.titleLarge)
+        }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            item { content() }
+        }
+    }
+}
+
+@Composable
+private fun AttendanceSection(ui: UiState) {
+    val att = ui.attendance
+    if (att == null) { Text("No attendance data yet - pull to refresh."); return }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Text("Today", style = MaterialTheme.typography.titleSmall)
+            att.today?.sessions?.forEach { s ->
+                Text("${s.session}: ${s.mark?.name ?: "?"}" + if (s.minutes_late > 0) " (${s.minutes_late} min late)" else "")
+            }
+            val p = att.statutory.sumOf { it.values["present"] ?: 0 }
+            val a = att.statutory.sumOf { (it.values["absent"] ?: 0) + (it.values["unauthorised"] ?: 0) }
+            if (p + a > 0) {
+                Spacer(Modifier.height(8.dp))
+                Text("%.1f%% present this year".format(100.0 * p / (p + a)), fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+    if (att.lesson.isNotEmpty()) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp)) {
+                Text("By subject", style = MaterialTheme.typography.titleSmall)
+                att.lesson.forEach { l ->
+                    val lp = l.values["present"] ?: 0
+                    val la = (l.values["absent"] ?: 0) + (l.values["unauthorised"] ?: 0)
+                    val late = l.values["late"] ?: 0
+                    Text("${l.subject}: $lp present, $la absent" + if (late > 0) ", $late late" else "", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
-        item { Text("Calendar", style = MaterialTheme.typography.titleMedium) }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    val cal = ui.calendar
-                    if (cal == null || cal.calendar.isEmpty()) { Text("No events cached yet.") }
-                    else cal.calendar.take(15).forEach { e ->
-                        Text("${e.start_date.take(10)}  ${e.description}", style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            }
-        }
-        item { Text("Notices", style = MaterialTheme.typography.titleMedium) }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    val nb = ui.notices
-                    if (nb == null || nb.noticeboard.isEmpty()) { Text("No notices cached yet.") }
-                    else {
-                        nb.noticeboard.forEach { n -> Text("${n.name} (${n.filename ?: ""})", style = MaterialTheme.typography.bodyMedium) }
-                        Text("Documents are listed only, never auto-downloaded.", style = MaterialTheme.typography.labelSmall)
-                    }
-                }
-            }
-        }
-        item { Text("Clubs", style = MaterialTheme.typography.titleMedium) }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    val clubs = ui.clubs
-                    if (clubs == null || clubs.clubs.isEmpty()) { Text("No clubs cached yet.") }
-                    else clubs.clubs.forEach { c ->
-                        Text(c.name, fontWeight = FontWeight.SemiBold)
-                        c.description?.let { Text(stripHtml(it), style = MaterialTheme.typography.bodySmall) }
-                    }
+    }
+    val exceptions = att.statutory.flatMap { it.exceptions }
+    if (exceptions.isNotEmpty()) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp)) {
+                Text("Absences", style = MaterialTheme.typography.titleSmall)
+                exceptions.forEach { e ->
+                    Text("${e.date}  ${e.period}  ${e.description.ifBlank { "Absence" }}", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
     }
 }
+
+@Composable
+private fun NoticesSection(ui: UiState, vm: AppViewModel) {
+    val nb = ui.notices
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    if (nb == null || nb.noticeboard.isEmpty()) { Text("No notices yet - pull to refresh."); return }
+    Column {
+        nb.noticeboard.forEach { n ->
+            Card(Modifier.fillMaxWidth().padding(bottom = 8.dp).clickable(enabled = !busy && n.idString().isNotEmpty()) {
+                busy = true
+                error = null
+                vm.openNoticeFile(n.idString()) { ok, payload, err ->
+                    busy = false
+                    if (ok && payload != null) {
+                        val uri = android.net.Uri.parse(payload.substringBefore("|"))
+                        val mime = payload.substringAfter("|", "*/*")
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, mime)
+                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        runCatching { vm.getApplication<android.app.Application>().startActivity(intent) }
+                            .onFailure { error = "no app can open this file" }
+                    } else {
+                        error = err
+                    }
+                }
+            }) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(n.name, fontWeight = FontWeight.SemiBold)
+                    n.filename?.let { f ->
+                        Text(f + (n.filesize?.let { " - ${it / 1024} KB" } ?: ""), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+        if (busy) Text("Downloading...", style = MaterialTheme.typography.bodySmall)
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+    }
+}
+
+@Composable
+private fun ExamsSection(ui: UiState) {
+    val ex = ui.exams
+    if (ex == null) { Text("No exams data yet - pull to refresh."); return }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            ex.countdown?.let { Text("Next exam: ${it.exam} in ${it.minutes_to_go / 1440} days", fontWeight = FontWeight.Bold) }
+            ex.timetable.forEach { e ->
+                Text("${e.datetime}  ${e.title}  ${e.room ?: ""} ${e.seat ?: ""}", style = MaterialTheme.typography.bodySmall)
+            }
+            ex.results.forEach { r ->
+                Text("${r.date}  ${r.title}: ${r.result}", style = MaterialTheme.typography.bodySmall)
+            }
+            if (ex.timetable.isEmpty() && ex.results.isEmpty() && ex.countdown == null) Text("No exams recorded.")
+        }
+    }
+}
+
+@Composable
+private fun CalendarSection(ui: UiState) {
+    val cal = ui.calendar
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            if (cal == null || cal.calendar.isEmpty()) { Text("No events yet - pull to refresh.") }
+            else cal.calendar.forEach { e ->
+                Text("${e.start_date.take(10)}  ${e.description}", style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClubsSection(ui: UiState) {
+    val clubs = ui.clubs
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            if (clubs == null || clubs.clubs.isEmpty()) { Text("No clubs yet - pull to refresh.") }
+            else clubs.clubs.forEach { c ->
+                Text(c.name, fontWeight = FontWeight.SemiBold)
+                c.description?.let { Text(stripHtml(it), style = MaterialTheme.typography.bodySmall) }
+                Spacer(Modifier.height(6.dp))
+            }
+        }
+    }
+}
+
 
 private val PROFILE_FIELDS = listOf(
     "forename" to "Forename",

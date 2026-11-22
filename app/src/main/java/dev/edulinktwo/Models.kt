@@ -211,7 +211,15 @@ data class ExamsData(
 )
 
 @Serializable
-data class Notice(val name: String = "", val filename: String? = null, val filesize: Long? = null)
+data class Notice(
+    val id: JsonElement? = null,
+    val name: String = "",
+    val filename: String? = null,
+    val filesize: Long? = null,
+    val mime_type: String? = null
+) {
+    fun idString(): String = id?.toString()?.trim('"') ?: ""
+}
 @Serializable
 data class NoticeboardData(val noticeboard: List<Notice> = emptyList())
 
