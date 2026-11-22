@@ -445,3 +445,258 @@ impl PointsSummary {
             .unwrap_or_default()
     }
 }
+
+// ---------- attendance ----------
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Mark {
+    #[serde(default)]
+    pub code: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default, rename = "type")]
+    pub kind: String,
+    #[serde(default)]
+    pub present: bool,
+    #[serde(default)]
+    pub is_late: bool,
+    #[serde(default)]
+    pub is_authorised_absence: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SessionMark {
+    #[serde(default)]
+    pub session: String,
+    #[serde(default)]
+    pub date: String,
+    #[serde(default)]
+    pub minutes_late: i64,
+    #[serde(default)]
+    pub mark: Option<Mark>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TodayAttendance {
+    #[serde(default)]
+    pub sessions: Vec<SessionMark>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AttendanceException {
+    #[serde(default)]
+    pub date: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default, rename = "type")]
+    pub kind: String,
+    #[serde(default)]
+    pub period: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct StatutoryMonth {
+    #[serde(default)]
+    pub month: String,
+    #[serde(default)]
+    pub values: std::collections::HashMap<String, i64>,
+    #[serde(default)]
+    pub exceptions: Vec<AttendanceException>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LessonAttendance {
+    #[serde(default)]
+    pub subject: String,
+    #[serde(default)]
+    pub values: std::collections::HashMap<String, i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AttendanceData {
+    #[serde(default)]
+    pub today: Option<TodayAttendance>,
+    #[serde(default)]
+    pub statutory: Vec<StatutoryMonth>,
+    #[serde(default)]
+    pub lesson: Vec<LessonAttendance>,
+}
+
+// ---------- exams ----------
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ExamCountdown {
+    #[serde(default)]
+    pub minutes_to_go: i64,
+    #[serde(default)]
+    pub exam: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Exam {
+    #[serde(default)]
+    pub datetime: String,
+    #[serde(default)]
+    pub board: String,
+    #[serde(default)]
+    pub level: String,
+    #[serde(default)]
+    pub code: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub room: Option<String>,
+    #[serde(default)]
+    pub seat: Option<String>,
+    #[serde(default)]
+    pub duration: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ExamEntry {
+    #[serde(default)]
+    pub season: String,
+    #[serde(default)]
+    pub board: String,
+    #[serde(default)]
+    pub code: String,
+    #[serde(default)]
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ExamResult {
+    #[serde(default)]
+    pub date: String,
+    #[serde(default)]
+    pub board: String,
+    #[serde(default)]
+    pub code: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub result: String,
+    #[serde(default)]
+    pub equivalent: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ExamsData {
+    #[serde(default)]
+    pub countdown: Option<ExamCountdown>,
+    #[serde(default)]
+    pub timetable: Vec<Exam>,
+    #[serde(default)]
+    pub entries: Vec<ExamEntry>,
+    #[serde(default)]
+    pub results: Vec<ExamResult>,
+}
+
+// ---------- noticeboard ----------
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Notice {
+    #[serde(default)]
+    pub id: Option<Id>,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub filename: Option<String>,
+    #[serde(default)]
+    pub filesize: Option<i64>,
+    #[serde(default)]
+    pub mime_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct NoticeboardData {
+    #[serde(default)]
+    pub noticeboard: Vec<Notice>,
+}
+
+// ---------- calendar ----------
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CalendarEvent {
+    #[serde(default)]
+    pub start_date: String,
+    #[serde(default)]
+    pub end_date: Option<String>,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub notes: Option<String>,
+    #[serde(default)]
+    pub all_day_event: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CalendarData {
+    #[serde(default)]
+    pub calendar: Vec<CalendarEvent>,
+}
+
+// ---------- clubs ----------
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Club {
+    #[serde(default)]
+    pub id: Option<Id>,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ClubsData {
+    #[serde(default)]
+    pub clubs: Vec<Club>,
+}
+
+// ---------- personal (profile) ----------
+// Kept as raw JSON: schools expose different field sets.
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PersonalData {
+    #[serde(default)]
+    pub personal: serde_json::Value,
+}
+
+// ---------- communicator (read-only: inbox/outbox listing; never marks read) ----------
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MessageSender {
+    #[serde(default)]
+    pub id: Option<Id>,
+    #[serde(default, rename = "type")]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Message {
+    #[serde(default)]
+    pub id: Option<Id>,
+    #[serde(default, rename = "type")]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub subject: String,
+    #[serde(default)]
+    pub body: String,
+    #[serde(default)]
+    pub date: String,
+    #[serde(default)]
+    pub read: Option<String>,
+    #[serde(default)]
+    pub sender: Option<MessageSender>,
+    #[serde(default)]
+    pub attachments: Vec<Attachment>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MessagesData {
+    #[serde(default)]
+    pub messages: Vec<Message>,
+}
