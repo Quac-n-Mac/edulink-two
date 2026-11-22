@@ -255,7 +255,7 @@ fun TimetableTab(ui: UiState) {
                         color = if (day.date == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                     )
                 }
-                items(day.lessons, key = { day.date + (it.start_time ?: "") + it.subjectName() }) { l ->
+                items(day.lessons.size, key = { day.date + "-lesson-" + it }) { idx -> val l = day.lessons[idx]
                     Card(Modifier.fillMaxWidth()) {
                         Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("${l.start_time ?: ""}\n${l.end_time ?: ""}", style = MaterialTheme.typography.labelSmall)

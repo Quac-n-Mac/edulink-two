@@ -83,7 +83,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 clubs = decodeSurface<ClubsData>(cl).first,
                 personal = decodeSurface<PersonalData>(per).first,
                 inbox = decodeSurface<MessagesData>(inbox).first,
-                lastUpdated = hwAt
+                lastUpdated = hwAt,
+                error = lastDecodeError ?: _ui.value.error
             )
         }
     }

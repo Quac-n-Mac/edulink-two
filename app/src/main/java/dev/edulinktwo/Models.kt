@@ -14,7 +14,7 @@ data class Id(val value: String)
 
 @Serializable
 data class Employee(
-    val id: JsonObject? = null,
+    val id: JsonElement? = null,
     val title: String = "",
     val forename: String = "",
     val surname: String = ""
@@ -152,10 +152,14 @@ fun decodeCached(raw: String): Cached? = runCatching {
     json.decodeFromString<Cached>(raw)
 }.getOrNull()
 
+@Volatile var lastDecodeError: String? = null
+
 inline fun <reified T> decodeSurface(raw: String?): Pair<T?, String?> {
     if (raw == null) return null to null
     val cached = decodeCached(raw) ?: return null to null
-    return runCatching { json.decodeFromJsonElement<T>(cached.data) }.getOrNull() to cached.fetched_at
+    return runCatching { json.decodeFromJsonElement<T>(cached.data) }
+        .onFailure { lastDecodeError = "${T::class.simpleName}: ${it.message?.take(160)}" }
+        .getOrNull() to cached.fetched_at
 }
 
 @Serializable
