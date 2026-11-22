@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":"1","result":{"success":true,"method":"EduLink.LoginContext","establishment":{"id":81,"name":"Example Comprehensive School"},"user":{"id":"424242","forename":"Test","surname":"Student"}}}
