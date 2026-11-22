@@ -14,7 +14,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 
 /**
- * Perspective tilt, roughly [-1, 1] per axis over about +/-35 degrees.
+ * Perspective tilt, saturating at about +/-17 degrees of rotation.
  * Driven by the game rotation vector (gyro + accelerometer fusion, no
  * compass), so it tracks phone ROTATION fast like perspective wallpapers.
  * A slow-adapting reference recentres around however the phone is being
@@ -46,14 +46,17 @@ fun rememberPerspective(): State<Offset> {
                     primed = true
                     return
                 }
-                // Very slow reference adaptation (~8s) so the effect
-                // recentres around the current grip.
-                refPitch += (pitch - refPitch) * 0.004f
-                refRoll += (roll - refRoll) * 0.004f
+                // Very slow reference adaptation (~15s) so the effect
+                // recentres around the current grip, but ONLY while the
+                // phone is near level - a held tilt must never decay away.
+                if (kotlin.math.abs(pitch - refPitch) < 0.05f && kotlin.math.abs(roll - refRoll) < 0.05f) {
+                    refPitch += (pitch - refPitch) * 0.0012f
+                    refRoll += (roll - refRoll) * 0.0012f
+                }
                 // Light smoothing (~150ms) keeps motion fluid, not jumpy.
                 val a = 0.55f
-                sx = a * sx + (1 - a) * ((roll - refRoll) / 0.6f)
-                sy = a * sy + (1 - a) * ((pitch - refPitch) / 0.6f)
+                sx = a * sx + (1 - a) * ((roll - refRoll) / 0.30f)
+                sy = a * sy + (1 - a) * ((pitch - refPitch) / 0.30f)
                 tilt.value = Offset(sx.coerceIn(-1f, 1f), sy.coerceIn(-1f, 1f))
             }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}

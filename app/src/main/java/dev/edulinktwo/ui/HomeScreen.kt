@@ -58,7 +58,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     BackHandler(enabled = anySheet) { detail = null; detailLoading = false; detailError = null }
     BackHandler(enabled = accountSheet) { accountSheet = false }
     BackHandler(enabled = lessonSel != null) { lessonSel = null }
-    BackHandler(enabled = !anySheet && !accountSheet && ui.tab != Tab.HOMEWORK) { vm.selectTab(Tab.HOMEWORK) }
+    BackHandler(enabled = !anySheet && !accountSheet && lessonSel == null && ui.tab != Tab.HOMEWORK) { vm.selectTab(Tab.HOMEWORK) }
 
     // 3-layer parallax: a deep background plane drifts against scroll and
     // device tilt, content scrolls at full speed, and the bars stay pinned
@@ -76,25 +76,32 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     LaunchedEffect(ui.tab) { scrollPx = 0f }
     val barElev = if (scrollPx > 6f) 6.dp else 0.dp
 
+    // His 4-layer stack, far to near, each counter-shifting more than
+    // the last: background -> page content -> detail sheets -> bars.
+    val drift = Modifier.graphicsLayer {
+        scaleX = 1.3f; scaleY = 1.3f
+        rotationZ = tilt.x * 2.5f
+        translationY = -scrollPx * 0.18f + tilt.y * 24.dp.toPx()
+        translationX = tilt.x * 36.dp.toPx()
+    }
+    val contentDrift = Modifier.graphicsLayer {
+        translationY = -tilt.y * 34.dp.toPx()
+        translationX = -tilt.x * 54.dp.toPx()
+    }
+    val sheetDrift = Modifier.graphicsLayer {
+        translationY = -tilt.y * 46.dp.toPx()
+        translationX = -tilt.x * 72.dp.toPx()
+    }
+    val nearDrift = Modifier.graphicsLayer {
+        translationY = -tilt.y * 62.dp.toPx()
+        translationX = -tilt.x * 96.dp.toPx()
+    }
+
     Box(Modifier.fillMaxSize().nestedScroll(scrollProbe)) {
         // Layer 1 (deep): barely-there gradient + faint doodle texture.
         // Perspective stack (calibration: the "Perspective" wallpaper app at
         // ~70-80%): rotation-driven, layers at increasing depth amplitudes,
         // background also rotates a touch for the 3D read.
-        val drift = Modifier.graphicsLayer {
-            scaleX = 1.2f; scaleY = 1.2f
-            rotationZ = tilt.x * 1.4f
-            translationY = -scrollPx * 0.18f + tilt.y * 12.dp.toPx()
-            translationX = tilt.x * 16.dp.toPx()
-        }
-        val contentDrift = Modifier.graphicsLayer {
-            translationY = tilt.y * 16.dp.toPx()
-            translationX = tilt.x * 26.dp.toPx()
-        }
-        val nearDrift = Modifier.graphicsLayer {
-            translationY = tilt.y * 20.dp.toPx()
-            translationX = tilt.x * 34.dp.toPx()
-        }
         Box(
             Modifier
                 .fillMaxSize()
@@ -109,8 +116,8 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             modifier = Modifier.fillMaxSize().then(drift)
         )
 
-        // Layers 2+3: content scrolls between the pinned bars.
-        Column(Modifier.fillMaxSize().then(contentDrift)) {
+        // Layers 2+4: content scrolls between the bars; bars ride nearest.
+        Column(Modifier.fillMaxSize()) {
             TopAppBar(
                 modifier = Modifier.then(nearDrift).shadow(barElev),
                 title = {
@@ -130,7 +137,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         PullToRefreshBox(
             isRefreshing = ui.refreshing,
             onRefresh = { vm.refresh() },
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f).then(contentDrift)
         ) {
             // Fast transitions: 120ms, no slow fades.
             AnimatedContent(
@@ -171,7 +178,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         ModalBottomSheet(
             onDismissRequest = { detail = null; detailLoading = false; detailError = null }
         ) {
-            Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
+            Column(Modifier.then(sheetDrift).padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
                 when {
                     detailLoading -> Text("Loading...", style = MaterialTheme.typography.bodyMedium)
                     detail == null -> Text(detailError ?: "could not load homework", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
@@ -218,7 +225,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
 
     lessonSel?.let { lesson ->
         ModalBottomSheet(onDismissRequest = { lessonSel = null }) {
-            LessonSheet(ui, vm, lesson)
+            Column(Modifier.then(sheetDrift)) { LessonSheet(ui, vm, lesson) }
         }
     }
 
