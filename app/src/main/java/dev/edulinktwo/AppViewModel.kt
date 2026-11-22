@@ -34,6 +34,14 @@ data class UiState(
     val clubs: ClubsData? = null,
     val personal: PersonalData? = null,
     val inbox: MessagesData? = null,
+    val outbox: MessagesData? = null,
+    val registers: RegistersData? = null,
+    val seatingPlans: SeatingPlansData? = null,
+    val catering: CateringData? = null,
+    val documents: DocumentsData? = null,
+    val externalLinks: ExternalLinksData? = null,
+    val medical: MedicalData? = null,
+    val teachers: TeachersData? = null,
     val lastUpdated: String? = null,
     val refreshing: Boolean = false,
     val degraded: Boolean = false,
@@ -71,6 +79,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val cl = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "clubs") }.getOrNull()
             val per = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "personal") }.getOrNull()
             val inbox = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "inbox") }.getOrNull()
+            val outbox = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "outbox") }.getOrNull()
+            val regs = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "registers") }.getOrNull()
+            val plans = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "seatingplans") }.getOrNull()
+            val cat = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "catering") }.getOrNull()
+            val docs = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "documents") }.getOrNull()
+            val links = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "externallinks") }.getOrNull()
+            val med = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "medical") }.getOrNull()
+            val tch = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "teachers") }.getOrNull()
             val (hwData, hwAt) = decodeSurface<HomeworkData>(hw)
             val (tbData, _) = decodeSurface<TimetableData>(tb)
             val (achData, _) = decodeSurface<AchievementData>(ach)
@@ -85,6 +101,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 clubs = decodeSurface<ClubsData>(cl).first,
                 personal = decodeSurface<PersonalData>(per).first,
                 inbox = decodeSurface<MessagesData>(inbox).first,
+                outbox = decodeSurface<MessagesData>(outbox).first,
+                registers = decodeSurface<RegistersData>(regs).first,
+                seatingPlans = decodeSurface<SeatingPlansData>(plans).first,
+                catering = decodeSurface<CateringData>(cat).first,
+                documents = decodeSurface<DocumentsData>(docs).first,
+                externalLinks = decodeSurface<ExternalLinksData>(links).first,
+                medical = decodeSurface<MedicalData>(med).first,
+                teachers = decodeSurface<TeachersData>(tch).first,
                 lastUpdated = hwAt,
                 error = lastDecodeError ?: _ui.value.error
             )
@@ -265,6 +289,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 withContext(Dispatchers.Main) { onDone(false, null, res?.error ?: "document fetch failed") }
             }
+        }
+    }
+
+    /** Full class register for a register id (or the demo canned one). */
+    fun registerDetail(id: String, onDone: (RegisterDetail?, String?) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val raw = runCatching {
+                RustBridge.nativeFetchRaw(stateDir, cacheDir, "register-$id", "EduLink.Register", "{\"register_id\":\"$id\",\"format\":2}")
+            }.getOrNull()
+            val (d, _) = decodeSurface<RegisterDetail>(raw)
+            val err = if (d == null) {
+                raw?.let { runCatching { json.parseToJsonElement(it).jsonObject["error"]?.jsonPrimitive?.content }.getOrNull() }
+                    ?: lastDecodeError ?: "register fetch failed (no response)"
+            } else null
+            withContext(Dispatchers.Main) { onDone(d, err) }
+        }
+    }
+
+    /** Seating plan layout for a timetable lesson. */
+    fun seatingPlanDetail(entry: SeatingPlanEntry, onDone: (SeatingPlanDetail?, String?) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val key = (entry.group_name + "-" + entry.room_name).replace(Regex("[^A-Za-z0-9._-]"), "_")
+            val params = "{\"group_name\":\"${entry.group_name}\",\"teacher_name\":\"${entry.teacher_name}\",\"room_name\":\"${entry.room_name}\",\"format\":2}"
+            val raw = runCatching {
+                RustBridge.nativeFetchRaw(stateDir, cacheDir, "seatingplan-$key", "EduLink.SeatingPlan", params)
+            }.getOrNull()
+            val (d, _) = decodeSurface<SeatingPlanDetail>(raw)
+            val err = if (d == null) {
+                raw?.let { runCatching { json.parseToJsonElement(it).jsonObject["error"]?.jsonPrimitive?.content }.getOrNull() }
+                    ?: lastDecodeError ?: "seating plan fetch failed (no response)"
+            } else null
+            withContext(Dispatchers.Main) { onDone(d, err) }
         }
     }
 

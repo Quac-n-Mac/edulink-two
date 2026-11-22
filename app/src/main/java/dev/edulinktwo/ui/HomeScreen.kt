@@ -50,18 +50,20 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     var detailLoading by remember { mutableStateOf(false) }
     var detailError by remember { mutableStateOf<String?>(null) }
     var attachmentBusy by remember { mutableStateOf(false) }
+    var lessonSel by remember { mutableStateOf<Lesson?>(null) }
 
     // Back gesture: sheets dismiss first, then tabs pop to root; the system
     // only exits the app at the root tab.
     val anySheet = detail != null || detailLoading || detailError != null
     BackHandler(enabled = anySheet) { detail = null; detailLoading = false; detailError = null }
     BackHandler(enabled = accountSheet) { accountSheet = false }
+    BackHandler(enabled = lessonSel != null) { lessonSel = null }
     BackHandler(enabled = !anySheet && !accountSheet && ui.tab != Tab.HOMEWORK) { vm.selectTab(Tab.HOMEWORK) }
 
     // 3-layer parallax: a deep background plane drifts against scroll and
     // device tilt, content scrolls at full speed, and the bars stay pinned
     // above it with a shadow that appears once content is under them.
-    val tilt by rememberTilt()
+    val tilt by rememberPerspective()
     var scrollPx by remember { mutableFloatStateOf(0f) }
     val scrollProbe = remember {
         object : NestedScrollConnection {
@@ -76,17 +78,22 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
 
     Box(Modifier.fillMaxSize().nestedScroll(scrollProbe)) {
         // Layer 1 (deep): barely-there gradient + faint doodle texture.
-        // Deep plane moves WITH tilt (looking "into" the screen), the pinned
-        // bars counter-move as the near plane. Amplitudes chosen to be clearly
-        // visible on a phone tilt, not just measurable.
+        // Perspective stack (calibration: the "Perspective" wallpaper app at
+        // ~70-80%): rotation-driven, layers at increasing depth amplitudes,
+        // background also rotates a touch for the 3D read.
         val drift = Modifier.graphicsLayer {
-            scaleX = 1.15f; scaleY = 1.15f
-            translationY = -scrollPx * 0.18f + tilt.y * 20.dp.toPx()
+            scaleX = 1.2f; scaleY = 1.2f
+            rotationZ = tilt.x * 1.4f
+            translationY = -scrollPx * 0.18f + tilt.y * 12.dp.toPx()
+            translationX = tilt.x * 16.dp.toPx()
+        }
+        val contentDrift = Modifier.graphicsLayer {
+            translationY = tilt.y * 16.dp.toPx()
             translationX = tilt.x * 26.dp.toPx()
         }
         val nearDrift = Modifier.graphicsLayer {
-            translationY = -tilt.y * 7.dp.toPx()
-            translationX = -tilt.x * 10.dp.toPx()
+            translationY = tilt.y * 20.dp.toPx()
+            translationX = tilt.x * 34.dp.toPx()
         }
         Box(
             Modifier
@@ -103,7 +110,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         )
 
         // Layers 2+3: content scrolls between the pinned bars.
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().then(contentDrift)) {
             TopAppBar(
                 modifier = Modifier.then(nearDrift).shadow(barElev),
                 title = {
@@ -141,7 +148,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                             if (d != null) detail = d else detailError = err ?: "could not load this homework"
                         }
                     }
-                    Tab.TIMETABLE -> TimetableTab(ui)
+                    Tab.TIMETABLE -> TimetableTab(ui) { lessonSel = it }
                     Tab.POINTS -> PointsTab(ui)
                     Tab.MORE -> MoreTab(ui, vm)
                     Tab.PROFILE -> ProfileTab(ui, vm)
@@ -206,6 +213,12 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                     }
                 }
             }
+        }
+    }
+
+    lessonSel?.let { lesson ->
+        ModalBottomSheet(onDismissRequest = { lessonSel = null }) {
+            LessonSheet(ui, vm, lesson)
         }
     }
 
@@ -337,7 +350,7 @@ fun HomeworkTab(ui: UiState, vm: AppViewModel, onTap: (String, String) -> Unit) 
 }
 
 @Composable
-fun TimetableTab(ui: UiState) {
+fun TimetableTab(ui: UiState, onLessonTap: (Lesson) -> Unit = {}) {
     val tb = ui.timetable
     if (tb == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No timetable cached yet. Pull to refresh.") }
@@ -355,7 +368,7 @@ fun TimetableTab(ui: UiState) {
                     )
                 }
                 items(day.lessons.size, key = { day.date + "-lesson-" + it }) { idx -> val l = day.lessons[idx]
-                    Card(Modifier.fillMaxWidth()) {
+                    Card(Modifier.fillMaxWidth().clickable { onLessonTap(l) }) {
                         Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("${l.start_time ?: ""}\n${l.end_time ?: ""}", style = MaterialTheme.typography.labelSmall)
                             Column {
@@ -444,7 +457,7 @@ fun MoreTab(ui: UiState, vm: AppViewModel) {
     when (section) {
         null -> {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf("Attendance", "Notices", "Exams", "Calendar", "Clubs").forEach { name ->
+                listOf("Attendance", "Notices", "Exams", "Calendar", "Clubs", "Messages", "Registers", "Seating Plans", "Catering", "Documents", "Links", "Medical", "Teachers").forEach { name ->
                     item {
                         Card(Modifier.fillMaxWidth().clickable { section = name }) {
                             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -461,6 +474,14 @@ fun MoreTab(ui: UiState, vm: AppViewModel) {
         "Exams" -> MoreSection(title = "Exams", onBack = { section = null }) { ExamsSection(ui) }
         "Calendar" -> MoreSection(title = "Calendar", onBack = { section = null }) { CalendarSection(ui) }
         "Clubs" -> MoreSection(title = "Clubs", onBack = { section = null }) { ClubsSection(ui) }
+        "Messages" -> MoreSection(title = "Messages", onBack = { section = null }) { MessagesSection(ui) }
+        "Registers" -> MoreSection(title = "Registers", onBack = { section = null }) { RegistersSection(ui, vm) }
+        "Seating Plans" -> MoreSection(title = "Seating Plans", onBack = { section = null }) { SeatingPlansSection(ui, vm) }
+        "Catering" -> MoreSection(title = "Catering", onBack = { section = null }) { CateringSection(ui) }
+        "Documents" -> MoreSection(title = "Documents", onBack = { section = null }) { DocumentsSection(ui) }
+        "Links" -> MoreSection(title = "Links", onBack = { section = null }) { LinksSection(ui) }
+        "Medical" -> MoreSection(title = "Medical", onBack = { section = null }) { MedicalSection(ui) }
+        "Teachers" -> MoreSection(title = "Teachers", onBack = { section = null }) { TeachersSection(ui) }
     }
 }
 
@@ -695,6 +716,288 @@ fun ProfileTab(ui: UiState, vm: AppViewModel) {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+private fun isDemo(ui: UiState): Boolean = ui.currentAccount?.contains("demo.offline") == true
+
+private fun matchSeatingPlan(ui: UiState, group: String): SeatingPlanEntry? {
+    val plans = ui.seatingPlans?.seating_plans ?: return null
+    return plans.firstOrNull { it.group_name.equals(group, true) }
+        ?: plans.firstOrNull { group.isNotBlank() && it.group_name.contains(group, true) }
+        ?: if (isDemo(ui)) plans.firstOrNull() else null
+}
+
+private fun matchRegister(ui: UiState, group: String): RegisterEntry? {
+    val regs = ui.registers?.registers ?: return null
+    return regs.firstOrNull { group.isNotBlank() && it.name.contains(group, true) }
+        ?: if (isDemo(ui)) regs.firstOrNull() else null
+}
+
+@Composable
+fun LessonSheet(ui: UiState, vm: AppViewModel, lesson: Lesson) {
+    val group = lesson.teaching_group?.name ?: ""
+    val planEntry = remember(group) { matchSeatingPlan(ui, group) }
+    val regEntry = remember(group) { matchRegister(ui, group) }
+    var reg by remember { mutableStateOf<RegisterDetail?>(null) }
+    var plan by remember { mutableStateOf<SeatingPlanDetail?>(null) }
+    var err by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(group) {
+        regEntry?.let { vm.registerDetail(it.idString()) { d, e -> reg = d; if (d == null) err = e } }
+        planEntry?.let { vm.seatingPlanDetail(it) { d, e -> plan = d; if (d == null && err == null) err = e } }
+        if (regEntry == null && planEntry == null) err = "no register or seating plan cached for this class"
+    }
+    Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
+        Text(lesson.subjectName().ifBlank { group }, style = MaterialTheme.typography.titleLarge)
+        Text("$group  ${lesson.room?.name ?: ""}  ${lesson.teacherName()}", style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(12.dp))
+        plan?.let {
+            Text("Seating plan - ${it.room.long_name.ifBlank { it.room.short_name }}", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(6.dp))
+            SeatingPlanCanvas(it, reg?.learners ?: emptyList())
+            Spacer(Modifier.height(12.dp))
+        }
+        reg?.let { RegisterDetailView(it) }
+        if (reg == null && plan == null) {
+            Text(err ?: "Loading...", style = MaterialTheme.typography.bodyMedium,
+                color = if (err != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+        }
+    }
+}
+
+@Composable
+fun RegisterDetailView(detail: RegisterDetail) {
+    Text("Class register" + if (detail.date.isNotBlank()) " - ${detail.date}" else "", style = MaterialTheme.typography.titleSmall)
+    Spacer(Modifier.height(6.dp))
+    val present = detail.learners.count { l -> l.marks.any { it.mark == "/" || it.mark == "\\" } }
+    Text("$present of ${detail.learners.size} marked present", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+    Spacer(Modifier.height(6.dp))
+    detail.learners.sortedBy { it.surname }.forEach { l ->
+        val marks = l.marks.mapNotNull { it.mark.ifBlank { null } }.joinToString(" ")
+        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+            Text(l.fullName(), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            if (l.has_detention) Text("D ", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+            if (l.on_report) Text("R ", color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.labelSmall)
+            Text(marks, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+/** Room layout: blackboard + tables, seats labelled with learner initials. */
+@Composable
+fun SeatingPlanCanvas(plan: SeatingPlanDetail, learners: List<RegisterLearner>) {
+    val byId = learners.associateBy({ it.idString() }, { l -> l.forename.take(1) + l.surname.take(1) })
+    val room = plan.room
+    if (room.width <= 0 || room.height <= 0) { Text("No room layout in this plan."); return }
+    BoxWithConstraints(
+        Modifier.fillMaxWidth().height(280.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(Color(0xFFEFF3F7))
+    ) {
+        val sx = maxWidth.value / room.width
+        val sy = 280.0 / room.height
+        val s = minOf(sx, sy)
+        room.blackboard?.let { bb ->
+            Box(
+                Modifier
+                    .offset(x = ((bb.x - 0.8) * s).dp, y = (bb.y * s).dp)
+                    .width((1.6 * s).dp).height(6.dp)
+                    .graphicsLayer { rotationZ = bb.angle.toFloat() }
+                    .background(Color(0xFF37474F))
+            )
+        }
+        room.tables.forEach { t ->
+            val w = (if (t.type.contains("2")) 1.2 else 0.6) * s
+            val h = 0.6 * s
+            Box(
+                Modifier
+                    .offset(x = (t.x * s).dp, y = (t.y * s).dp)
+                    .width(w.dp).height(h.dp)
+                    .graphicsLayer { rotationZ = t.angle.toFloat() }
+                    .background(Color(0xFF90A4AE), MaterialTheme.shapes.small),
+                contentAlignment = Alignment.Center
+            ) {
+                val label = listOfNotNull(t.left, t.right).mapNotNull { byId[it] }.joinToString(" ")
+                if (label.isNotBlank()) Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessagesSection(ui: UiState) {
+    var sentTab by remember { mutableStateOf(false) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(selected = !sentTab, onClick = { sentTab = false }, label = { Text("Received") })
+        FilterChip(selected = sentTab, onClick = { sentTab = true }, label = { Text("Sent") })
+    }
+    Spacer(Modifier.height(8.dp))
+    val data = if (sentTab) ui.outbox else ui.inbox
+    if (data == null) { Text("No messages cached yet - pull to refresh."); return }
+    if (data.messages.isEmpty()) { Text(if (sentTab) "Nothing sent." else "Inbox zero."); return }
+    data.messages.forEach { m ->
+        var open by remember(m.subject + m.date) { mutableStateOf(false) }
+        Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { open = !open }) {
+            Column(Modifier.padding(12.dp)) {
+                Text(m.subject.ifBlank { "(no subject)" }, fontWeight = FontWeight.SemiBold)
+                Text("${m.sender?.name ?: ""}  ${m.date}", style = MaterialTheme.typography.labelSmall)
+                if (open) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(stripHtml(m.body), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RegistersSection(ui: UiState, vm: AppViewModel) {
+    val regs = ui.registers?.registers
+    if (regs == null) { Text("No registers cached yet - pull to refresh."); return }
+    var picked by remember { mutableStateOf<RegisterEntry?>(null) }
+    var detail by remember { mutableStateOf<RegisterDetail?>(null) }
+    var err by remember { mutableStateOf<String?>(null) }
+    if (picked == null) {
+        regs.forEach { r ->
+            Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
+                picked = r; detail = null; err = null
+                vm.registerDetail(r.idString()) { d, e -> detail = d; err = e }
+            }) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(r.name, fontWeight = FontWeight.SemiBold)
+                    Text("${r.start_time} - ${r.end_time}", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    } else {
+        TextButton(onClick = { picked = null }) { Text("< All registers") }
+        when {
+            detail != null -> RegisterDetailView(detail!!)
+            err != null -> Text(err!!, color = MaterialTheme.colorScheme.error)
+            else -> Text("Loading...")
+        }
+    }
+}
+
+@Composable
+private fun SeatingPlansSection(ui: UiState, vm: AppViewModel) {
+    val plans = ui.seatingPlans?.seating_plans
+    if (plans == null) { Text("No seating plans cached yet - pull to refresh."); return }
+    var picked by remember { mutableStateOf<SeatingPlanEntry?>(null) }
+    var detail by remember { mutableStateOf<SeatingPlanDetail?>(null) }
+    var err by remember { mutableStateOf<String?>(null) }
+    if (picked == null) {
+        plans.forEach { p ->
+            Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
+                picked = p; detail = null; err = null
+                vm.seatingPlanDetail(p) { d, e -> detail = d; err = e }
+            }) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(p.group_name, fontWeight = FontWeight.SemiBold)
+                    Text("${p.teacher_name}  ${p.room_name}", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    } else {
+        TextButton(onClick = { picked = null }) { Text("< All plans") }
+        when {
+            detail != null -> SeatingPlanCanvas(detail!!, emptyList())
+            err != null -> Text(err!!, color = MaterialTheme.colorScheme.error)
+            else -> Text("Loading...")
+        }
+    }
+}
+
+@Composable
+private fun CateringSection(ui: UiState) {
+    val c = ui.catering
+    if (c == null) { Text("No catering data yet - pull to refresh."); return }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Text("Balance", style = MaterialTheme.typography.titleSmall)
+            Text("GBP ${c.balanceText()}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        }
+    }
+    c.transactions.forEach { t ->
+        Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+            Column(Modifier.padding(12.dp)) {
+                Text(t.date, style = MaterialTheme.typography.labelSmall)
+                t.items.forEach { i ->
+                    Row(Modifier.fillMaxWidth()) {
+                        Text(i.item, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        Text(i.priceText(), style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                if (t.balanceText().isNotBlank()) Text("balance after: ${t.balanceText()}", style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentsSection(ui: UiState) {
+    val docs = ui.documents?.documents
+    if (docs == null) { Text("No documents cached yet - pull to refresh."); return }
+    if (docs.isEmpty()) { Text("No documents."); return }
+    docs.forEach { d ->
+        Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+            Column(Modifier.padding(12.dp)) {
+                Text(d.summary ?: d.type ?: "Document", fontWeight = FontWeight.SemiBold)
+                Text(listOfNotNull(d.type, d.status, d.last_updated).joinToString("  "), style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun LinksSection(ui: UiState) {
+    val links = ui.externalLinks?.links
+    if (links == null) { Text("No links cached yet - pull to refresh."); return }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    links.forEach { l ->
+        Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
+            runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(l.url))) }
+        }) {
+            Column(Modifier.padding(12.dp)) {
+                Text(l.name, fontWeight = FontWeight.SemiBold)
+                Text(l.url, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MedicalSection(ui: UiState) {
+    val m = ui.medical?.medical
+    if (m == null) { Text("No medical data yet - pull to refresh."); return }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Text("Emergency consent: " + if (m.have_emergency_consent) "yes" else "no", style = MaterialTheme.typography.bodyMedium)
+            if (m.dietary_needs.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Text("Dietary needs", style = MaterialTheme.typography.titleSmall)
+                m.dietary_needs.forEach { Text("- $it", style = MaterialTheme.typography.bodyMedium) }
+            }
+            if (m.medical_notes.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Text("Notes", style = MaterialTheme.typography.titleSmall)
+                m.medical_notes.forEach { Text("- ${it.type}: ${it.summary}", style = MaterialTheme.typography.bodyMedium) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TeachersSection(ui: UiState) {
+    val teachers = ui.teachers?.teachers
+    if (teachers == null) { Text("No staff directory cached yet - pull to refresh."); return }
+    teachers.forEach { t ->
+        Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+            Column(Modifier.padding(12.dp)) {
+                Text(t.fullName(), fontWeight = FontWeight.SemiBold)
+                Text(listOfNotNull(t.email, t.phone).joinToString("  "), style = MaterialTheme.typography.labelSmall)
             }
         }
     }

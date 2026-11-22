@@ -14,26 +14,47 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 
 /**
- * Low-pass filtered gravity tilt, roughly [-1, 1] per axis. Powers the
- * parallax layer offsets and the glass shader's travelling light direction.
- * Slight on purpose: amplitudes are applied by the callers in single-digit dp.
+ * Perspective tilt, roughly [-1, 1] per axis over about +/-35 degrees.
+ * Driven by the game rotation vector (gyro + accelerometer fusion, no
+ * compass), so it tracks phone ROTATION fast like perspective wallpapers.
+ * A slow-adapting reference recentres around however the phone is being
+ * held, so the effect is about movement, not absolute angle.
  */
 @Composable
-fun rememberTilt(): State<Offset> {
+fun rememberPerspective(): State<Offset> {
     val context = LocalContext.current.applicationContext
     val tilt = remember { mutableStateOf(Offset.Zero) }
     DisposableEffect(Unit) {
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        val sensor = sm.getDefaultSensor(Sensor.TYPE_GRAVITY)
-        var fx = 0f
-        var fy = 0f
+        val sensor = sm.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
+            ?: sm.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        val rot = FloatArray(9)
+        val ori = FloatArray(3)
+        var refPitch = 0f
+        var refRoll = 0f
+        var sx = 0f
+        var sy = 0f
+        var primed = false
         val listener = object : SensorEventListener {
             override fun onSensorChanged(e: SensorEvent) {
-                // gravity ~9.81 on the axis pointing down; normalize and smooth
-                val alpha = 0.88f
-                fx = alpha * fx + (1 - alpha) * (e.values[0] / 9.81f)
-                fy = alpha * fy + (1 - alpha) * (e.values[1] / 9.81f)
-                tilt.value = Offset(fx.coerceIn(-1f, 1f), fy.coerceIn(-1f, 1f))
+                SensorManager.getRotationMatrixFromVector(rot, e.values)
+                SensorManager.getOrientation(rot, ori)
+                val pitch = ori[1]
+                val roll = ori[2]
+                if (!primed) {
+                    refPitch = pitch; refRoll = roll
+                    primed = true
+                    return
+                }
+                // Very slow reference adaptation (~8s) so the effect
+                // recentres around the current grip.
+                refPitch += (pitch - refPitch) * 0.004f
+                refRoll += (roll - refRoll) * 0.004f
+                // Light smoothing (~150ms) keeps motion fluid, not jumpy.
+                val a = 0.55f
+                sx = a * sx + (1 - a) * ((roll - refRoll) / 0.6f)
+                sy = a * sy + (1 - a) * ((pitch - refPitch) / 0.6f)
+                tilt.value = Offset(sx.coerceIn(-1f, 1f), sy.coerceIn(-1f, 1f))
             }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
@@ -42,3 +63,7 @@ fun rememberTilt(): State<Offset> {
     }
     return tilt
 }
+
+/** Back-compat alias used by the older glass experiments. */
+@Composable
+fun rememberTilt(): State<Offset> = rememberPerspective()

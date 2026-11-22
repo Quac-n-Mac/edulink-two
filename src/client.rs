@@ -31,6 +31,16 @@ pub mod methods {
     pub const PERSONAL: &str = "EduLink.Personal";
     pub const INBOX: &str = "Communicator.Inbox";
     pub const OUTBOX: &str = "Communicator.Outbox";
+    pub const REGISTERS: &str = "EduLink.Registers";
+    pub const REGISTER: &str = "EduLink.Register";
+    pub const SEATING_PLANS: &str = "EduLink.SeatingPlans";
+    pub const SEATING_PLAN: &str = "EduLink.SeatingPlan";
+    pub const MEDICAL: &str = "EduLink.Medical";
+    pub const CATERING: &str = "EduLink.Catering";
+    pub const DOCUMENTS: &str = "EduLink.Documents";
+    pub const EXTERNAL_LINKS: &str = "EduLink.ExternalLinks";
+    pub const REPORT_CARD: &str = "EduLink.ReportCard";
+    pub const TEACHERS: &str = "EduLink.Teachers";
     /// Pre-login school resolution on the provisioning service.
     pub const SCHOOL_FROM_CODE: &str = "School.FromCode";
     /// Pre-login school metadata (name + crest) on the school's server.
@@ -381,6 +391,46 @@ impl<T: Transport> Client<T> {
             .call(methods::OUTBOX, json!({"format": 2}))
             .await?;
         serde_json::from_value(v).context("parse outbox")
+    }
+
+    /// Raw JSON result for a read-only method, unmodelled surfaces.
+    /// Only ever used with read methods; the crate has no write methods.
+    pub async fn raw(&self, method: &str, params: Value) -> Result<Value> {
+        let mut v = self.transport.call(method, params).await?;
+        if let Some(obj) = v.as_object_mut() {
+            obj.remove("success");
+            obj.remove("metrics");
+            obj.remove("api_version");
+        }
+        Ok(v)
+    }
+
+    /// Secondary surfaces fetched as raw JSON: the UI parses what it
+    /// needs. Never fails wholesale; each surface carries its error.
+    pub async fn prefetch_extra(&self, learner_id: &str) -> Vec<(&'static str, Result<Value>)> {
+        let (outbox, registers, plans, medical, catering, docs, links, report, teachers) = tokio::join!(
+            timed(self.outbox()),
+            timed(self.raw(methods::REGISTERS, json!({"learner_id": learner_id, "format": 2}))),
+            timed(self.raw(methods::SEATING_PLANS, json!({"learner_id": learner_id, "format": 2}))),
+            timed(self.raw(methods::MEDICAL, json!({"learner_id": learner_id, "format": 2}))),
+            timed(self.raw(methods::CATERING, json!({"learner_id": learner_id, "format": 2}))),
+            timed(self.raw(methods::DOCUMENTS, json!({"learner_id": learner_id, "format": 2}))),
+            timed(self.raw(methods::EXTERNAL_LINKS, json!({"learner_id": learner_id, "format": 2}))),
+            timed(self.raw(methods::REPORT_CARD, json!({"learner_id": learner_id, "format": 2}))),
+            timed(self.raw(methods::TEACHERS, json!({"format": 2}))),
+        );
+        let mut out: Vec<(&'static str, Result<Value>)> = vec![
+            ("registers", registers.0),
+            ("seatingplans", plans.0),
+            ("medical", medical.0),
+            ("catering", catering.0),
+            ("documents", docs.0),
+            ("externallinks", links.0),
+            ("reportcard", report.0),
+            ("teachers", teachers.0),
+        ];
+        out.push(("outbox", outbox.0.map(|d| serde_json::to_value(d).unwrap_or(Value::Null))));
+        out
     }
 
     pub async fn status(&self) -> Result<StatusData> {

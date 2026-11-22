@@ -28,5 +28,12 @@ object RustBridge {
     external fun nativeAccounts(stateDir: String): String
     external fun nativeSwitchAccount(stateDir: String, key: String): String
     external fun nativeRemoveAccount(stateDir: String, key: String): String
+    external fun nativeFetchRaw(
+        stateDir: String,
+        cacheDir: String,
+        name: String,
+        method: String,
+        paramsJson: String
+    ): String
     external fun nativeSetDegraded(degraded: Boolean)
 }

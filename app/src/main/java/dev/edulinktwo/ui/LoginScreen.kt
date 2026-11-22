@@ -56,15 +56,16 @@ fun LoginScreen(ui: UiState, vm: AppViewModel) {
     var school by remember { mutableStateOf<SchoolResolveResult?>(null) }
     var schoolCode by remember { mutableStateOf("") }
 
-    val tilt by rememberTilt()
+    val tilt by rememberPerspective()
 
     Box(modifier = Modifier.fillMaxSize()) {
         // 1:1 background: gradient + the original doodle overlay.
         val parallax = Modifier.fillMaxSize().graphicsLayer {
-            // deep layer: drifts WITH tilt, oversized to hide edges
-            scaleX = 1.15f; scaleY = 1.15f
-            translationX = tilt.x * 26.dp.toPx()
-            translationY = tilt.y * 20.dp.toPx()
+            // deep layer: drifts WITH rotation, oversized to hide edges
+            scaleX = 1.2f; scaleY = 1.2f
+            rotationZ = tilt.x * 1.4f
+            translationX = tilt.x * 30.dp.toPx()
+            translationY = tilt.y * 24.dp.toPx()
         }
         Box(
             modifier = parallax

@@ -96,6 +96,12 @@ async fn do_login(state_dir: PathBuf, cache_dir: PathBuf, host: String, school_c
     if let Ok(d) = pre.clubs.result { cache.write("clubs", &d).await?; ok += 1; } else if let Err(e) = pre.clubs.result { failed.push(format!("clubs: {e:#}")); }
     if let Ok(d) = pre.personal.result { cache.write("personal", &d).await?; ok += 1; } else if let Err(e) = pre.personal.result { failed.push(format!("personal: {e:#}")); }
     if let Ok(d) = pre.inbox.result { cache.write("inbox", &d).await?; ok += 1; } else if let Err(e) = pre.inbox.result { failed.push(format!("inbox: {e:#}")); }
+    for (name, res) in client.prefetch_extra(&session.learner_id).await {
+        match res {
+            Ok(d) => { cache.write(name, &d).await?; ok += 1; }
+            Err(e) => failed.push(format!("{name}: {e:#}")),
+        }
+    }
     let avatar_b64 = user.avatar.as_ref().and_then(|a| a.photo.clone());
     Ok(json!({
         "ok": true,
@@ -136,6 +142,12 @@ async fn do_refresh(state_dir: PathBuf, cache_dir: PathBuf) -> Result<Value> {
     if let Ok(d) = pre.clubs.result { cache.write("clubs", &d).await?; ok += 1; } else if let Err(e) = pre.clubs.result { failed.push(format!("clubs: {e:#}")); }
     if let Ok(d) = pre.personal.result { cache.write("personal", &d).await?; ok += 1; } else if let Err(e) = pre.personal.result { failed.push(format!("personal: {e:#}")); }
     if let Ok(d) = pre.inbox.result { cache.write("inbox", &d).await?; ok += 1; } else if let Err(e) = pre.inbox.result { failed.push(format!("inbox: {e:#}")); }
+    for (name, res) in client.prefetch_extra(&session.learner_id).await {
+        match res {
+            Ok(d) => { cache.write(name, &d).await?; ok += 1; }
+            Err(e) => failed.push(format!("{name}: {e:#}")),
+        }
+    }
     Ok(json!({"ok": failed.is_empty(), "surfaces_ok": ok, "failed": failed, "total_ms": pre.total_ms}))
 }
 
@@ -209,6 +221,58 @@ async fn do_hw_detail(state_dir: PathBuf, cache_dir: PathBuf, id: String, source
 /// Pre-login: resolve a school code/postcode to host + establishment id,
 /// then fetch the school's display name + crest for the credentials
 /// screen. Mirrors the stock app's two-step login.
+/// Generic cache-first fetch for unmodelled read-only surfaces
+/// (register detail, seating plan detail). Fresh cache wins, then
+/// network, then stale cache.
+async fn do_fetch_raw(state_dir: PathBuf, cache_dir: PathBuf, name: String, method: String, params: Value) -> Result<String> {
+    let store = AccountStore::load(&state_dir)?;
+    let session = store.current().context("not logged in")?.clone();
+    let cache = Cache::new(&cache_dir)?.for_user(&session.key())?;
+    if let Ok(text) = std::fs::read_to_string(cache_file(&cache, &name)) {
+        let v: Value = serde_json::from_str(&text)?;
+        if let Some(ts) = v.get("fetched_at").and_then(|t| t.as_str()) {
+            if let Ok(t) = chrono::DateTime::parse_from_rfc3339(ts) {
+                if chrono::Utc::now().signed_duration_since(t.with_timezone(&chrono::Utc)) < TTL_HW_DETAIL {
+                    return Ok(text);
+                }
+            }
+        }
+    }
+    if demo::is_demo(&session) {
+        // Demo mode serves the vendor's single canned register/seating
+        // plan regardless of which one was tapped.
+        let fallback = if method == "EduLink.Register" {
+            Some("register-full")
+        } else if method.starts_with("EduLink.SeatingPlan") {
+            Some("seatingplan-full")
+        } else {
+            None
+        };
+        if let Some(fb) = fallback {
+            let path = cache_file(&cache, fb);
+            if path.exists() {
+                return Ok(std::fs::read_to_string(&path)?);
+            }
+        }
+        anyhow::bail!("no cached demo detail for {name}");
+    }
+    let client = client_for(&session)?;
+    match client.raw(&method, params).await {
+        Ok(d) => {
+            cache.write(&name, &d).await?;
+            std::fs::read_to_string(cache_file(&cache, &name)).context("read back surface")
+        }
+        Err(e) => {
+            let path = cache_file(&cache, &name);
+            if path.exists() {
+                Ok(std::fs::read_to_string(&path)?)
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
 async fn do_resolve_school(code: String) -> Result<Value> {
     let info = edulink_two::client::resolve_school(&code).await?;
     let (name, logo) = edulink_two::client::school_details(&info.host, info.school_id)
@@ -221,6 +285,30 @@ async fn do_resolve_school(code: String) -> Result<Value> {
         "name": name,
         "logo_b64": logo,
     }))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_edulinktwo_RustBridge_nativeFetchRaw(
+    mut env: JNIEnv,
+    _class: JClass,
+    state_dir: JString,
+    cache_dir: JString,
+    name: JString,
+    method: JString,
+    params_json: JString,
+) -> jstring {
+    let out = (|| -> Result<String> {
+        let state_dir = PathBuf::from(get(&mut env, &state_dir)?);
+        let cache_dir = PathBuf::from(get(&mut env, &cache_dir)?);
+        let name = get(&mut env, &name)?;
+        let method = get(&mut env, &method)?;
+        let params: Value = serde_json::from_str(&get(&mut env, &params_json)?).context("params must be JSON")?;
+        Ok(block_on(do_fetch_raw(state_dir, cache_dir, name, method, params))?)
+    })();
+    match out {
+        Ok(s) => to_jstring(&mut env, s),
+        Err(e) => to_jstring(&mut env, err_str(&e)),
+    }
 }
 
 #[no_mangle]

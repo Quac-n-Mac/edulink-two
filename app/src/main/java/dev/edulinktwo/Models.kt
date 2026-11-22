@@ -241,11 +241,142 @@ data class PersonalData(val personal: JsonObject? = null)
 data class MessageSender(val name: String = "")
 @Serializable
 data class Message(
+    val id: JsonElement? = null,
+    val type: String? = null,
     val subject: String = "",
     val body: String = "",
     val date: String = "",
     val read: String? = null,
-    val sender: MessageSender? = null
+    val sender: MessageSender? = null,
+    val attachments: List<Attachment> = emptyList()
 )
 @Serializable
 data class MessagesData(val messages: List<Message> = emptyList())
+
+@Serializable
+data class RegisterEntry(
+    val id: JsonElement? = null,
+    val name: String = "",
+    val start_time: String = "",
+    val end_time: String = "",
+    val linked: Boolean = false
+) {
+    fun idString(): String = id?.toString()?.trim('"') ?: ""
+}
+@Serializable
+data class RegistersData(val registers: List<RegisterEntry> = emptyList())
+
+@Serializable
+data class RegisterPeriod(val id: JsonElement? = null, val name: String = "", val start_time: String = "", val end_time: String = "")
+@Serializable
+data class RegisterMark(val period_id: JsonElement? = null, val mark: String = "", val minutes_late: Long = 0)
+@Serializable
+data class RegisterLearner(
+    val id: JsonElement? = null,
+    val forename: String = "",
+    val surname: String = "",
+    val has_detention: Boolean = false,
+    val on_report: Boolean = false,
+    val marks: List<RegisterMark> = emptyList()
+) {
+    fun idString(): String = id?.toString()?.trim('"') ?: ""
+    fun fullName(): String = "$forename $surname".trim()
+}
+@Serializable
+data class RegisterDetail(
+    val date: String = "",
+    val type: String = "",
+    val periods: List<RegisterPeriod> = emptyList(),
+    val learners: List<RegisterLearner> = emptyList()
+)
+
+@Serializable
+data class SeatingPlanEntry(
+    val group_name: String = "",
+    val teacher_name: String = "",
+    val room_name: String = ""
+)
+@Serializable
+data class SeatingPlansData(val seating_plans: List<SeatingPlanEntry> = emptyList())
+
+@Serializable
+data class SeatingGroup(val name: String = "", val register_type: String = "", val type: String = "")
+@Serializable
+data class SeatPoint(val angle: Double = 0.0, val x: Double = 0.0, val y: Double = 0.0)
+@Serializable
+data class SeatTable(
+    val angle: Double = 0.0,
+    val x: Double = 0.0,
+    val y: Double = 0.0,
+    val left: String? = null,
+    val right: String? = null,
+    val type: String = ""
+)
+@Serializable
+data class SeatingRoom(
+    val short_name: String = "",
+    val long_name: String = "",
+    val height: Double = 0.0,
+    val width: Double = 0.0,
+    val blackboard: SeatPoint? = null,
+    val tables: List<SeatTable> = emptyList()
+)
+@Serializable
+data class SeatingPlanDetail(val group: SeatingGroup = SeatingGroup(), val room: SeatingRoom = SeatingRoom())
+
+@Serializable
+data class CateringItem(val item: String = "", val price: JsonElement? = null) {
+    fun priceText(): String = price?.toString()?.trim('"') ?: ""
+}
+@Serializable
+data class CateringTransaction(
+    val date: String = "",
+    val items: List<CateringItem> = emptyList(),
+    val balance: JsonElement? = null
+) {
+    fun balanceText(): String = balance?.toString()?.trim('"') ?: ""
+}
+@Serializable
+data class CateringData(val balance: JsonElement? = null, val transactions: List<CateringTransaction> = emptyList()) {
+    fun balanceText(): String = balance?.toString()?.trim('"') ?: ""
+}
+
+@Serializable
+data class SchoolDocument(
+    val id: String = "",
+    val summary: String? = null,
+    val type: String? = null,
+    val status: String? = null,
+    val last_updated: String? = null
+)
+@Serializable
+data class DocumentsData(val documents: List<SchoolDocument> = emptyList())
+
+@Serializable
+data class ExternalLink(val name: String = "", val url: String = "", val icon: String? = null)
+@Serializable
+data class ExternalLinksData(val links: List<ExternalLink> = emptyList())
+
+@Serializable
+data class MedicalNote(val type: String = "", val summary: String = "")
+@Serializable
+data class MedicalInfo(
+    val have_emergency_consent: Boolean = false,
+    val dietary_needs: List<String> = emptyList(),
+    val medical_notes: List<MedicalNote> = emptyList()
+)
+@Serializable
+data class MedicalData(val medical: MedicalInfo = MedicalInfo())
+
+@Serializable
+data class Teacher(
+    val title: String = "",
+    val forename: String = "",
+    val surname: String = "",
+    val email: String? = null,
+    val phone: String? = null
+) {
+    fun fullName(): String = listOf(title, "$forename $surname".trim()).filter { it.isNotBlank() }.joinToString(" ")
+}
+@Serializable
+data class TeachersData(val teachers: List<Teacher> = emptyList())
