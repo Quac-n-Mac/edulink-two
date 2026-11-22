@@ -441,11 +441,11 @@ pub extern "system" fn Java_dev_edulinktwo_RustBridge_nativeHwDetail(
     }
 }
 
-async fn do_hw_attachment(state_dir: PathBuf, cache_dir: PathBuf, id: String) -> Result<Value> {
+async fn do_hw_attachment(state_dir: PathBuf, cache_dir: PathBuf, homework_id: String, id: String) -> Result<Value> {
     let store = AccountStore::load(&state_dir)?;
     let session = store.current().context("not logged in")?.clone();
     let client = client_for(&session)?;
-    let att = client.homework_attachment(&id).await?;
+    let att = client.homework_attachment(&homework_id, &id).await?;
     let filename = att.get("filename").and_then(|f| f.as_str()).unwrap_or("attachment").to_string();
     let mime = att.get("mime_type").and_then(|m| m.as_str()).unwrap_or("application/octet-stream").to_string();
     let data = att.get("data").or_else(|| att.get("file")).or_else(|| att.get("content"))
@@ -460,13 +460,15 @@ pub extern "system" fn Java_dev_edulinktwo_RustBridge_nativeHwAttachment(
     _class: JClass,
     state_dir: JString,
     cache_dir: JString,
+    homework_id: JString,
     id: JString,
 ) -> jstring {
     let out = (|| -> Result<String> {
         let state_dir = PathBuf::from(get(&mut env, &state_dir)?);
         let cache_dir = PathBuf::from(get(&mut env, &cache_dir)?);
+        let homework_id = get(&mut env, &homework_id)?;
         let id = get(&mut env, &id)?;
-        Ok(block_on(do_hw_attachment(state_dir, cache_dir, id))?.to_string())
+        Ok(block_on(do_hw_attachment(state_dir, cache_dir, homework_id, id))?.to_string())
     })();
     match out {
         Ok(s) => to_jstring(&mut env, s),

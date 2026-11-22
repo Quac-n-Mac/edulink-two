@@ -281,12 +281,12 @@ impl<T: Transport> Client<T> {
 
     /// Fetch one homework attachment. Returns the raw attachment object
     /// (filename, mime_type, base64 data) for the caller to persist.
-    pub async fn homework_attachment(&self, attachment_id: &str) -> Result<Value> {
+    pub async fn homework_attachment(&self, homework_id: &str, attachment_id: &str) -> Result<Value> {
         let v = self
             .transport
             .call(
                 methods::HOMEWORK_ATTACHMENT_FETCH,
-                json!({"attachment_id": attachment_id, "format": 2}),
+                json!({"homework_id": homework_id, "attachment_id": attachment_id, "format": 2}),
             )
             .await?;
         Ok(v.get("attachment").cloned().unwrap_or(v))

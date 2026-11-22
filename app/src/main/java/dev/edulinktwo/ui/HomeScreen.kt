@@ -593,7 +593,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                                     leadingContent = { Icon(Icons.Default.Send, null) },
                                     modifier = Modifier.clickable(enabled = !attachmentBusy) {
                                         attachmentBusy = true
-                                        vm.openAttachment(att.idString()) { ok, payload, err ->
+                                        vm.openAttachment(d.homework.idString(), att.idString()) { ok, payload, err ->
                                             attachmentBusy = false
                                             if (ok && payload != null) {
                                                 val uri = android.net.Uri.parse(payload.substringBefore("|"))
@@ -604,6 +604,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                                                     addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                                                 }
                                                 runCatching { vm.getApplication<android.app.Application>().startActivity(intent) }
+                                                    .onFailure { detailError = "File downloaded, but no app could open it. Install a PDF/document viewer and try again." }
                                             } else {
                                                 detailError = err
                                             }

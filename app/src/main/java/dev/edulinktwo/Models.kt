@@ -62,12 +62,15 @@ data class HomeworkData(val homework: HomeworkLists = HomeworkLists())
 
 @Serializable
 data class HomeworkDetailInner(
+    val id: JsonElement? = null,
     val activity: String = "",
     val subject: String = "",
     val description: String = "",
     val due_date: String = "",
     val attachments: List<Attachment> = emptyList()
-)
+) {
+    fun idString(): String = id?.toString()?.trim('"') ?: ""
+}
 @Serializable
 data class HomeworkDetail(val homework: HomeworkDetailInner = HomeworkDetailInner())
 
@@ -442,3 +445,9 @@ data class ReportCardDay(val date: String = "", val classes: List<ReportCardClas
 data class ReportCardBody(val start_date: String = "", val end_date: String = "", val comments: String = "", val active: Boolean = true, val current: Boolean = false, val days: List<ReportCardDay> = emptyList())
 @Serializable
 data class ReportCardData(val card: ReportCardBody = ReportCardBody())
+
+/** Stock homework list carries file metadata even when HomeworkDetails omits it. */
+fun HomeworkDetail.withListAttachments(item: HomeworkItem?): HomeworkDetail {
+    val all = (homework.attachments + item?.attachments.orEmpty()).distinctBy { it.idString().ifBlank { it.filename ?: "" } }
+    return copy(homework = homework.copy(id = homework.id ?: item?.id, attachments = all))
+}

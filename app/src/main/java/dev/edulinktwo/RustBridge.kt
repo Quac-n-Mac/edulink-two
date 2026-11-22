@@ -23,7 +23,7 @@ object RustBridge {
     external fun nativeDemoLogin(stateDir: String, cacheDir: String): String
     external fun nativeGetCached(stateDir: String, cacheDir: String, name: String): String
     external fun nativeHwDetail(stateDir: String, cacheDir: String, id: String, source: String): String
-    external fun nativeHwAttachment(stateDir: String, cacheDir: String, id: String): String
+    external fun nativeHwAttachment(stateDir: String, cacheDir: String, homeworkId: String, id: String): String
     external fun nativeNoticeFile(stateDir: String, cacheDir: String, id: String): String
     external fun nativeAccounts(stateDir: String): String
     external fun nativeSwitchAccount(stateDir: String, key: String): String

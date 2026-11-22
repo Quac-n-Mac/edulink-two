@@ -246,9 +246,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun showAddAccount() { _ui.value = _ui.value.copy(showLogin = true) }
 
     /** Download a homework attachment to the files dir; returns a content URI to open. */
-    fun openAttachment(id: String, onDone: (Boolean, String?, String?) -> Unit) {
+    fun openAttachment(homeworkId: String, id: String, onDone: (Boolean, String?, String?) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
-            val raw = runCatching { RustBridge.nativeHwAttachment(stateDir, cacheDir, id) }.getOrNull()
+            val raw = runCatching { RustBridge.nativeHwAttachment(stateDir, cacheDir, homeworkId, id) }.getOrNull()
             val res = raw?.let { runCatching { json.decodeFromString<AttachmentResult>(it) }.getOrNull() }
             if (res?.ok == true && res.data_b64 != null) {
                 val result = runCatching {
@@ -383,7 +383,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun homeworkDetail(id: String, source: String = "EduLink", onDone: (HomeworkDetail?, String?) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             val raw = runCatching { RustBridge.nativeHwDetail(stateDir, cacheDir, id, source) }.getOrNull()
-            val (d, _) = decodeSurface<HomeworkDetail>(raw)
+            val (detail, _) = decodeSurface<HomeworkDetail>(raw)
+            val listItem = (_ui.value.homework?.homework?.current.orEmpty() + _ui.value.homework?.homework?.past.orEmpty()).firstOrNull { it.idString() == id }
+            val d = detail?.withListAttachments(listItem)
             val err = if (d == null) {
                 raw?.let {
                     runCatching {
