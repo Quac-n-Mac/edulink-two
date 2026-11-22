@@ -21,3 +21,7 @@ Pending:
 - Android CI build and nightly asset confirmation.
 - Real device/Android screenshot check. No claim of successful real-account reauthentication; it needs the user's credentials on their device.
 - Old 0.7.2 CI status was failed only because its screenshot emulator failed. Build and publish had succeeded; that status was not evidence of an APK compile failure.
+
+## Later closeout
+
+v0.7.5 additionally retained LoginContext authtoken and used it for prefetch/persistence. New token-rotation regression passed; core Rust tests5/5, Kotlin tests3/3 and Android compile passed. The6121413byte APK was downloaded/ZIP checked. User later installed it and showed recently updated homework. Exact cause of the original rejected on-device token was not proven. See HANDOFF.md and ATTACHMENTS-076.md for the newer shipped attachment fix.
