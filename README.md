@@ -50,11 +50,15 @@ The only wire methods implemented anywhere in this codebase are:
 
 `EduLink.Login`, `EduLink.LoginContext`, `EduLink.Status`, `EduLink.Homework`,
 `EduLink.HomeworkDetails`, `EduLink.Timetable`, `EduLink.Achievement`,
-`EduLink.Behaviour`
+`EduLink.Behaviour`, `EduLink.Attendance`, `EduLink.Exams`,
+`EduLink.Noticeboard`, `EduLink.Calendar`, `EduLink.Clubs`, `EduLink.Personal`,
+`Communicator.Inbox`, `Communicator.Outbox`
 
-All reads. There is no write-method code path to audit. The full 195-method
-map lives in the rea-lab repo (`reports/edulink-methods.md`); the remaining
-~187 slot in as per-area modules on the same Transport.
+All reads. Messages are listed without ever calling MessageMarkRead; reading
+here never marks a message read in Edulink. There is no write-method code
+path to audit. The full 195-method map lives in the rea-lab repo
+(`reports/edulink-methods.md`); the remaining ~179 slot in as per-area
+modules on the same Transport.
 
 ## CLI
 
@@ -87,9 +91,18 @@ Set `SIGNING_KEYSTORE_B64`, `SIGNING_STORE_PASSWORD`, `SIGNING_KEY_ALIAS`,
 `SIGNING_KEY_PASSWORD` secrets for a properly signed release APK; without
 them CI ships a debug-signed APK (fine for personal installs).
 
+## Surfaces in the first APK drop
+
+Homework (list + expand) - Timetable - Messages (read-only inbox, unread
+badges, full message view) - Points (achievement/behaviour/detentions) -
+Attendance (today, statutory %, per-lesson) - Exams (countdown, timetable,
+results) - Calendar - Notices - Clubs - Profile - Multi-account switcher.
+
+All 11 surfaces pre-cache in parallel at login and refresh behind the cache.
+
 ## Roadmap
 
-v1: login + homework + timetable + points (done in core + shell).
-Next: communicator read views, attendance, exams, notices, calendar -
-each is a new module on `Transport` plus a Compose tab. Write methods are
-out of scope permanently.
+Deferred (not silently dropped): Communicator outbox view, documents viewer
+(download-on-tap when connectivity allows), iCalendars export, forms/data
+collection, report cards, catering/balance (if the school enables it).
+Write methods are out of scope permanently.
