@@ -13,7 +13,7 @@ fn fixtures() -> PathBuf {
 async fn login_prefetches_everything() {
     let client = Client::new(MockTransport::new(fixtures()), "mock.local", "tstudent42");
     let (login, pre) = client
-        .login("fixture-password", None, "2026-11-23")
+        .login("fixture-password", 81, None, "2026-11-23")
         .await
         .expect("login");
     assert_eq!(login.user.display(), "Test Student");
