@@ -14,6 +14,10 @@ pub struct Session {
     pub learner_id: String,
     pub display_name: String,
     pub school: String,
+    #[serde(default)]
+    pub school_code: String,
+    #[serde(default)]
+    pub school_id: i64,
     pub saved_at: chrono::DateTime<chrono::Utc>,
 }
 
