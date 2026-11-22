@@ -81,15 +81,25 @@ data class Lesson(
     val teaching_group: TeachingGroup? = null,
     val subject: String? = null,
     val start_time: String? = null,
-    val end_time: String? = null
-) {
+    val end_time: String? = null,
+    val period_id: JsonElement? = null,
     val teachers: JsonElement? = null
+) {
     fun teacherName(): String = teachers?.toString()?.trim('"') ?: ""
     fun subjectName(): String = subject ?: teaching_group?.subject ?: ""
 }
 
 @Serializable
-data class Day(val date: String, val name: String? = null, val lessons: List<Lesson> = emptyList())
+data class TimetablePeriod(val id: JsonElement? = null, val name: String? = null, val start_time: String? = null, val end_time: String? = null)
+@Serializable
+data class Day(val date: String, val name: String? = null, val lessons: List<Lesson> = emptyList(), val periods: List<TimetablePeriod> = emptyList()) {
+    fun orderedLessons(): List<Lesson> = lessonsChronologically(lessons.map { lesson ->
+        val key = lesson.period_id?.toString()?.trim('"')
+        val period = periods.firstOrNull { key != null && (it.id?.toString()?.trim('"') == key || it.name == key) }
+        lesson.copy(start_time = lesson.start_time?.takeIf { it.isNotBlank() } ?: period?.start_time,
+            end_time = lesson.end_time?.takeIf { it.isNotBlank() } ?: period?.end_time)
+    }) { it.start_time }
+}
 @Serializable
 data class Week(val name: String? = null, val days: List<Day> = emptyList())
 @Serializable

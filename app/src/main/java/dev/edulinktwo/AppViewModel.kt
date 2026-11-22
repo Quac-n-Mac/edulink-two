@@ -48,6 +48,7 @@ data class UiState(
     val offline: Boolean = false,
     val error: String? = null,
     val showLogin: Boolean = false,
+    val sessionExpired: Boolean = false,
 )
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -61,9 +62,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // Cache-first: render the last-known snapshot on the first frame,
         // then refresh behind it. Never block the UI on the network.
         loadCachedAll()
-        reloadAccounts()
+        reloadAccounts(refreshAfter = true)
         watchConnectivity()
-        if (_ui.value.loggedIn) refresh()
     }
 
     private fun loadCachedAll() {
@@ -115,7 +115,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun reloadAccounts() {
+    fun reloadAccounts(refreshAfter: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             val raw = runCatching { RustBridge.nativeAccounts(stateDir) }.getOrNull() ?: return@launch
             val res = runCatching { json.decodeFromString<AccountsResult>(raw) }.getOrNull() ?: return@launch
@@ -124,6 +124,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 accounts = res.accounts,
                 currentAccount = res.current
             )
+            if (refreshAfter && res.current != null) refresh()
         }
     }
 
@@ -176,7 +177,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 reloadAccounts()
                 loadCachedAll()
-                _ui.value = _ui.value.copy(showLogin = false)
+                _ui.value = _ui.value.copy(showLogin = false, sessionExpired = false, error = null)
                 withContext(Dispatchers.Main) { onDone(true, null) }
             } else {
                 withContext(Dispatchers.Main) { onDone(false, res?.error ?: "login failed") }
@@ -201,12 +202,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val raw = runCatching { RustBridge.nativeRefresh(stateDir, cacheDir) }.getOrNull()
             val res = raw?.let { runCatching { json.decodeFromString<ApiResult>(it) }.getOrNull() }
             loadCachedAll()
-            val failedList = res?.failed?.takeIf { it.isNotEmpty() }
+            val failedList = res?.failed.orEmpty()
+            val expired = sessionNeedsSignIn(failedList + listOfNotNull(res?.error))
             _ui.value = _ui.value.copy(
                 refreshing = false,
+                sessionExpired = expired,
+                showLogin = expired || _ui.value.showLogin,
                 error = when {
-                    res?.ok == false -> res.error
-                    failedList != null -> "Some surfaces failed: " + failedList.joinToString("; ")
+                    expired -> "Your school session expired. Sign in again to refresh. Your saved data has been kept."
+                    res == null -> "Refresh failed. Check your connection and try again."
+                    failedList.isNotEmpty() -> "Some surfaces failed: " + failedList.joinToString("; ")
+                    res.ok == false -> res.error ?: "Refresh failed. Saved data has been kept."
                     else -> null
                 }
             )

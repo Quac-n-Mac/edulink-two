@@ -782,7 +782,7 @@ fun TimetableTab(ui: UiState, onLessonTap: (Lesson) -> Unit = {}) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         tb.weeks.forEach { week ->
             week.days.forEach { day ->
-                val orderedLessons = lessonsChronologically(day.lessons) { it.start_time }
+                val orderedLessons = day.orderedLessons()
                 item {
                     Text(
                         "${day.name ?: ""} (${day.date})" + if (day.date == today) " - today" else "",
@@ -1276,15 +1276,18 @@ private fun matchRegister(ui: UiState, group: String): RegisterEntry? {
 @Composable
 fun LessonSheet(ui: UiState, vm: AppViewModel, lesson: Lesson) {
     val group = lesson.teaching_group?.name ?: ""
-    val planEntry = remember(group) { matchSeatingPlan(ui, group) }
-    val regEntry = remember(group) { matchRegister(ui, group) }
+    val planEntry = remember(group, ui.seatingPlans) { matchSeatingPlan(ui, group) }
+    val regEntry = remember(group, ui.registers) { matchRegister(ui, group) }
     var reg by remember { mutableStateOf<RegisterDetail?>(null) }
     var plan by remember { mutableStateOf<SeatingPlanDetail?>(null) }
     var err by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(group) {
+    LaunchedEffect(group, regEntry, planEntry) {
+        err = null
+        reg = null
+        plan = null
         regEntry?.let { vm.registerDetail(it.idString()) { d, e -> reg = d; if (d == null) err = e } }
         planEntry?.let { vm.seatingPlanDetail(it) { d, e -> plan = d; if (d == null && err == null) err = e } }
-        if (regEntry == null && planEntry == null) err = "no register or seating plan cached for this class"
+        if (regEntry == null && planEntry == null) err = "No class register or seating plan is available in the cached data. Refresh, or sign in again if your session has expired."
     }
     Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
         Text(lesson.subjectName().ifBlank { group }, style = MaterialTheme.typography.titleLarge)

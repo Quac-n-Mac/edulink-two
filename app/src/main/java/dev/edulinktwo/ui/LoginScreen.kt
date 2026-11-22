@@ -53,8 +53,16 @@ fun LoginScreen(ui: UiState, vm: AppViewModel) {
         // First run, or "add account" from inside the app -> school code.
         mutableStateOf(if (ui.accounts.isNotEmpty() && !ui.showLogin && ui.currentAccount == null) LoginStep.PICKER else LoginStep.CODE)
     }
+    val expiredAccount = ui.accounts.firstOrNull { it.key == ui.currentAccount }
     var school by remember { mutableStateOf<SchoolResolveResult?>(null) }
     var schoolCode by remember { mutableStateOf("") }
+    LaunchedEffect(ui.sessionExpired, expiredAccount) {
+        if (ui.sessionExpired && expiredAccount != null && expiredAccount.school_id > 0) {
+            school = SchoolResolveResult(ok = true, host = expiredAccount.host, school_id = expiredAccount.school_id, name = expiredAccount.school)
+            schoolCode = expiredAccount.school_code
+            step = LoginStep.CREDENTIALS
+        }
+    }
 
     val tilt by rememberPerspective()
 
@@ -85,6 +93,10 @@ fun LoginScreen(ui: UiState, vm: AppViewModel) {
             translationY = -tilt.y * 4.dp.toPx()
         }
         Box(Modifier.fillMaxSize().then(fg)) {
+        if (ui.sessionExpired) {
+            Text("Session expired. Sign in again. Your saved data is kept.", color = Color.White,
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 48.dp, start = 20.dp, end = 20.dp))
+        }
         when (step) {
             LoginStep.PICKER -> AccountPicker(
                 ui = ui, vm = vm,

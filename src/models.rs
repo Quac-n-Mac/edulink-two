@@ -311,6 +311,8 @@ impl Lesson {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Period {
     #[serde(default)]
+    pub id: Option<Id>,
+    #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
     pub start_time: Option<String>,
