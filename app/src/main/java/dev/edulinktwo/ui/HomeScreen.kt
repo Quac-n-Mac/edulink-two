@@ -72,7 +72,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     BackHandler(enabled = !anySheet && !accountSheet && ui.tab != Tab.HOMEWORK) { vm.selectTab(Tab.HOMEWORK) }
 
     Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().glassBackdrop(glassBackdrop, glassLayer, glassScope)) {
+        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).glassBackdrop(glassBackdrop, glassLayer, glassScope)) {
             TopAppBar(
                 title = {
                     Column {
