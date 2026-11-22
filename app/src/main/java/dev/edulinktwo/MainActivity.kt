@@ -1,6 +1,9 @@
 package dev.edulinktwo
 
 import android.os.Bundle
+import android.graphics.Color
+import androidx.core.view.WindowInsetsControllerCompat
+import dev.edulinktwo.ui.TapFeedbackHost
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.collectAsState
@@ -13,14 +16,23 @@ import dev.edulinktwo.ui.LoginScreen
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.statusBarColor = Color.rgb(246, 247, 252)
+        window.navigationBarColor = Color.rgb(246, 247, 252)
+        window.decorView.setBackgroundColor(Color.rgb(246, 247, 252))
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = true
+            isAppearanceLightNavigationBars = true
+        }
         setContent {
             EdulinkTwoTheme {
                 val vm: AppViewModel = viewModel()
                 val ui by vm.ui.collectAsState()
+                TapFeedbackHost {
                 if (ui.loggedIn && !ui.showLogin) {
                     HomeScreen(ui = ui, vm = vm)
                 } else {
                     LoginScreen(ui = ui, vm = vm)
+                }
                 }
             }
         }

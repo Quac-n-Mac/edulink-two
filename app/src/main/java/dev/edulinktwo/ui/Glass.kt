@@ -147,25 +147,22 @@ fun Modifier.glassBackdrop(
 ): Modifier = this.onGloballyPositioned { backdrop.rootWinPos = it.positionInWindow() }.drawWithContent {
     if (!backdrop.captureInFlight && backdrop.capturedVersion < backdrop.captureVersion) {
         backdrop.captureInFlight = true
-        // record DOWNSCALED: the shader's glassScale maps root px -> texture
-        // px, so the texture must actually be scale * size, else every glass
-        // surface samples content from the wrong region of the screen
-        val w = (size.width * scale).toInt().coerceAtLeast(1)
-        val h = (size.height * scale).toInt().coerceAtLeast(1)
-        layer.record(androidx.compose.ui.unit.IntSize(w, h)) {
-            androidx.compose.ui.graphics.drawscope.scale(scale, scale, Offset.Zero) {
-                this@drawWithContent.drawContent()
-            }
+        // Capture and sampling both use full-resolution root pixels.
+        layer.record(androidx.compose.ui.unit.IntSize(size.width.toInt(), size.height.toInt())) {
+            this@drawWithContent.drawContent()
         }
         val v = backdrop.captureVersion
         scope.launch {
+            try {
             val bmp = layer.toImageBitmap()
             if (v.toLong() >= backdrop.capturedVersion) {
-                backdrop.scale = scale
+                backdrop.scale = 1f
                 backdrop.bitmap = bmp
             }
             backdrop.capturedVersion = maxOf(backdrop.capturedVersion, v.toLong())
-            backdrop.captureInFlight = false
+            } finally {
+                backdrop.captureInFlight = false
+            }
         }
     }
     drawContent()
