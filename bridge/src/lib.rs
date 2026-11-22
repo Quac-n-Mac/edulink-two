@@ -319,6 +319,39 @@ pub extern "system" fn Java_dev_edulinktwo_RustBridge_nativeHwDetail(
     }
 }
 
+async fn do_hw_attachment(state_dir: PathBuf, cache_dir: PathBuf, id: String) -> Result<Value> {
+    let store = AccountStore::load(&state_dir)?;
+    let session = store.current().context("not logged in")?.clone();
+    let client = client_for(&session)?;
+    let att = client.homework_attachment(&id).await?;
+    let filename = att.get("filename").and_then(|f| f.as_str()).unwrap_or("attachment").to_string();
+    let mime = att.get("mime_type").and_then(|m| m.as_str()).unwrap_or("application/octet-stream").to_string();
+    let data = att.get("data").or_else(|| att.get("file")).or_else(|| att.get("content"))
+        .and_then(|d| d.as_str()).context("no attachment data in response")?.to_string();
+    let _ = cache_dir;
+    Ok(json!({"ok": true, "filename": filename, "mime_type": mime, "data_b64": data}))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_edulinktwo_RustBridge_nativeHwAttachment(
+    mut env: JNIEnv,
+    _class: JClass,
+    state_dir: JString,
+    cache_dir: JString,
+    id: JString,
+) -> jstring {
+    let out = (|| -> Result<String> {
+        let state_dir = PathBuf::from(get(&mut env, &state_dir)?);
+        let cache_dir = PathBuf::from(get(&mut env, &cache_dir)?);
+        let id = get(&mut env, &id)?;
+        Ok(block_on(do_hw_attachment(state_dir, cache_dir, id))?.to_string())
+    })();
+    match out {
+        Ok(s) => to_jstring(&mut env, s),
+        Err(e) => to_jstring(&mut env, err_str(&e)),
+    }
+}
+
 #[no_mangle]
 pub extern "system" fn Java_dev_edulinktwo_RustBridge_nativeAccounts(
     mut env: JNIEnv,

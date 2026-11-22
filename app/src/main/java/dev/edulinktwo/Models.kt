@@ -23,7 +23,23 @@ data class Employee(
 }
 
 @Serializable
-data class Attachment(val kind: String? = null, val filename: String? = null)
+data class Attachment(
+    val id: JsonElement? = null,
+    val kind: String? = null,
+    val filename: String? = null,
+    val mime_type: String? = null
+) {
+    fun idString(): String = id?.toString()?.trim('"') ?: ""
+}
+
+@Serializable
+data class AttachmentResult(
+    val ok: Boolean = false,
+    val error: String? = null,
+    val filename: String? = null,
+    val mime_type: String? = null,
+    val data_b64: String? = null
+)
 
 @Serializable
 data class HomeworkItem(

@@ -202,6 +202,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun showAddAccount() { _ui.value = _ui.value.copy(showLogin = true) }
 
+    /** Download a homework attachment to the files dir; returns a content URI to open. */
+    fun openAttachment(id: String, onDone: (Boolean, String?, String?) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val raw = runCatching { RustBridge.nativeHwAttachment(stateDir, cacheDir, id) }.getOrNull()
+            val res = raw?.let { runCatching { json.decodeFromString<AttachmentResult>(it) }.getOrNull() }
+            if (res?.ok == true && res.data_b64 != null) {
+                val result = runCatching {
+                    val bytes = android.util.Base64.decode(res.data_b64, android.util.Base64.DEFAULT)
+                    val safe = (res.filename ?: "attachment").replace(Regex("[^A-Za-z0-9._-]"), "_")
+                    val dir = java.io.File(cacheDir, "attachments").apply { mkdirs() }
+                    val f = java.io.File(dir, safe)
+                    f.writeBytes(bytes)
+                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                        getApplication(), "dev.edulinktwo.fileprovider", f
+                    )
+                    Pair(uri.toString(), res.mime_type)
+                }
+                withContext(Dispatchers.Main) {
+                    if (result.isSuccess) onDone(true, result.getOrNull()!!.first + "|" + (result.getOrNull()!!.second ?: ""), null)
+                    else onDone(false, null, "could not save attachment")
+                }
+            } else {
+                withContext(Dispatchers.Main) { onDone(false, null, res?.error ?: "attachment fetch failed") }
+            }
+        }
+    }
+
     fun homeworkDetail(id: String, onDone: (HomeworkDetail?, String?) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             val raw = runCatching { RustBridge.nativeHwDetail(stateDir, cacheDir, id) }.getOrNull()

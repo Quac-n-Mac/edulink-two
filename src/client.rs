@@ -5,7 +5,7 @@
 use crate::models::*;
 use crate::transport::{HttpTransport, Transport};
 use anyhow::{Context, Result};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::future::Future;
 use std::time::Instant;
 
@@ -17,6 +17,8 @@ pub mod methods {
     pub const STATUS: &str = "EduLink.Status";
     pub const HOMEWORK: &str = "EduLink.Homework";
     pub const HOMEWORK_DETAILS: &str = "EduLink.HomeworkDetails";
+    /// Read-only attachment download (fetch = read).
+    pub const HOMEWORK_ATTACHMENT_FETCH: &str = "EduLink.HomeworkAttachmentFetch";
     pub const TIMETABLE: &str = "EduLink.Timetable";
     pub const ACHIEVEMENT: &str = "EduLink.Achievement";
     pub const BEHAVIOUR: &str = "EduLink.Behaviour";
@@ -226,6 +228,19 @@ impl<T: Transport> Client<T> {
             )
             .await?;
         serde_json::from_value(v).context("parse homework details")
+    }
+
+    /// Fetch one homework attachment. Returns the raw attachment object
+    /// (filename, mime_type, base64 data) for the caller to persist.
+    pub async fn homework_attachment(&self, attachment_id: &str) -> Result<Value> {
+        let v = self
+            .transport
+            .call(
+                methods::HOMEWORK_ATTACHMENT_FETCH,
+                json!({"attachment_id": attachment_id, "format": 2}),
+            )
+            .await?;
+        Ok(v.get("attachment").cloned().unwrap_or(v))
     }
 
     pub async fn timetable(&self, learner_id: &str, date: &str) -> Result<TimetableData> {

@@ -36,6 +36,9 @@ import java.time.LocalDate
 fun HomeScreen(ui: UiState, vm: AppViewModel) {
     var accountSheet by remember { mutableStateOf(false) }
     var detail by remember { mutableStateOf<HomeworkDetail?>(null) }
+    var detailLoading by remember { mutableStateOf(false) }
+    var detailError by remember { mutableStateOf<String?>(null) }
+    var attachmentBusy by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -79,7 +82,15 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 label = "tab"
             ) { tab ->
                 when (tab) {
-                    Tab.HOMEWORK -> HomeworkTab(ui, vm) { detail = it }
+                    Tab.HOMEWORK -> HomeworkTab(ui, vm) { id ->
+                        detailError = null
+                        detailLoading = true
+                        detail = null
+                        vm.homeworkDetail(id) { d, _ ->
+                            detailLoading = false
+                            if (d != null) detail = d else detailError = "could not load homework - check connection"
+                        }
+                    }
                     Tab.TIMETABLE -> TimetableTab(ui)
                     Tab.POINTS -> PointsTab(ui)
                     Tab.MORE -> MoreTab(ui)
@@ -89,25 +100,51 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         }
     }
 
-    detail?.let { d ->
-        AlertDialog(
-            onDismissRequest = { detail = null },
-            confirmButton = { TextButton(onClick = { detail = null }) { Text("Close") } },
-            title = { Text(d.homework.activity) },
-            text = {
-                Column {
-                    Text("${d.homework.subject} - due ${d.homework.due_date}", fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(8.dp))
-                    Text(stripHtml(d.homework.description))
-                    if (d.homework.attachments.isNotEmpty()) {
-                        Spacer(Modifier.height(8.dp))
-                        d.homework.attachments.forEach {
-                            Text("Attachment: ${it.filename ?: ""} (not downloaded)", style = MaterialTheme.typography.labelSmall)
+    if (detail != null || detailLoading || detailError != null) {
+        ModalBottomSheet(onDismissRequest = { detail = null; detailLoading = false; detailError = null }) {
+            Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
+                when {
+                    detailLoading -> Text("Loading...", style = MaterialTheme.typography.bodyMedium)
+                    detail == null -> Text(detailError ?: "could not load homework", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                    else -> {
+                        val d = detail!!
+                        Text(d.homework.activity, style = MaterialTheme.typography.titleLarge)
+                        Text("${d.homework.subject} - due ${d.homework.due_date}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(10.dp))
+                        Text(stripHtml(d.homework.description), style = MaterialTheme.typography.bodyMedium)
+                        if (d.homework.attachments.isNotEmpty()) {
+                            Spacer(Modifier.height(12.dp))
+                            Text("Attachments", style = MaterialTheme.typography.titleSmall)
+                            d.homework.attachments.forEach { att ->
+                                ListItem(
+                                    headlineContent = { Text(att.filename ?: "attachment") },
+                                    leadingContent = { Icon(Icons.Default.Send, null) },
+                                    modifier = Modifier.clickable(enabled = !attachmentBusy) {
+                                        attachmentBusy = true
+                                        vm.openAttachment(att.idString()) { ok, payload, err ->
+                                            attachmentBusy = false
+                                            if (ok && payload != null) {
+                                                val uri = android.net.Uri.parse(payload.substringBefore("|"))
+                                                val mime = payload.substringAfter("|", "*/*")
+                                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                                    setDataAndType(uri, mime)
+                                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                runCatching { vm.getApplication<android.app.Application>().startActivity(intent) }
+                                            } else {
+                                                detailError = err
+                                            }
+                                        }
+                                    }
+                                )
+                            }
                         }
+                        detailError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                     }
                 }
             }
-        )
+        }
     }
 
     if (accountSheet) {
@@ -167,7 +204,7 @@ fun stripHtml(s: String): String =
     s.replace(Regex("<[^>]*>"), "").replace(Regex("\\s+"), " ").trim()
 
 @Composable
-fun HomeworkTab(ui: UiState, vm: AppViewModel, onDetail: (HomeworkDetail) -> Unit) {
+fun HomeworkTab(ui: UiState, vm: AppViewModel, onTap: (String) -> Unit) {
     val hw = ui.homework
     if (hw == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No homework cached yet. Pull to refresh.") }
@@ -195,7 +232,7 @@ fun HomeworkTab(ui: UiState, vm: AppViewModel, onDetail: (HomeworkDetail) -> Uni
             }
             Card(
                 Modifier.fillMaxWidth().clickable {
-                    vm.homeworkDetail(h.idString()) { d, _ -> if (d != null) onDetail(d) }
+                    onTap(h.idString())
                 },
                 colors = CardDefaults.cardColors(containerColor = rowColor)
             ) {
