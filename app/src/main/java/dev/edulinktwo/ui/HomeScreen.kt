@@ -69,7 +69,9 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             NavigationBar {
                 NavigationBarItem(ui.tab == Tab.HOMEWORK, { vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, label = { Text("Homework") })
                 NavigationBarItem(ui.tab == Tab.TIMETABLE, { vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, label = { Text("Timetable") })
+                NavigationBarItem(ui.tab == Tab.MESSAGES, { vm.selectTab(Tab.MESSAGES) }, { Icon(Icons.Default.Email, null) }, label = { Text("Messages") })
                 NavigationBarItem(ui.tab == Tab.POINTS, { vm.selectTab(Tab.POINTS) }, { Icon(Icons.Default.Star, null) }, label = { Text("Points") })
+                NavigationBarItem(ui.tab == Tab.MORE, { vm.selectTab(Tab.MORE) }, { Icon(Icons.Default.Menu, null) }, label = { Text("More") })
             }
         }
     ) { padding ->
@@ -87,7 +89,9 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 when (tab) {
                     Tab.HOMEWORK -> HomeworkTab(ui, vm) { detail = it }
                     Tab.TIMETABLE -> TimetableTab(ui)
+                    Tab.MESSAGES -> MessagesTab(ui)
                     Tab.POINTS -> PointsTab(ui)
+                    Tab.MORE -> MoreTab(ui)
                 }
             }
         }
@@ -243,6 +247,142 @@ fun PointsTab(ui: UiState) {
                     Column(Modifier.padding(12.dp)) {
                         Text(d.description ?: "")
                         Text("${d.date ?: ""}  ${d.location ?: ""}  ${d.attended ?: ""}", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+fun MessagesTab(ui: UiState) {
+    val inbox = ui.inbox
+    var open by remember { mutableStateOf<Message?>(null) }
+    if (inbox == null) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No messages cached yet. Pull to refresh.") }
+        return
+    }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(inbox.messages) { m ->
+            val unread = m.read.isNullOrBlank()
+            Card(Modifier.fillMaxWidth().clickable { open = m }) {
+                Column(Modifier.padding(12.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text((if (unread) "● " else "") + m.subject, fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal)
+                        Text(m.date, style = MaterialTheme.typography.labelSmall)
+                    }
+                    Text(m.sender?.name ?: "", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        item { Text("Reading here never marks a message read in Edulink.", style = MaterialTheme.typography.labelSmall) }
+    }
+    open?.let { m ->
+        AlertDialog(
+            onDismissRequest = { open = null },
+            confirmButton = { TextButton(onClick = { open = null }) { Text("Close") } },
+            title = { Text(m.subject) },
+            text = {
+                Column {
+                    Text("${m.sender?.name ?: ""} - ${m.date}", style = MaterialTheme.typography.labelSmall)
+                    Spacer(Modifier.height(8.dp))
+                    Text(stripHtml(m.body))
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun MoreTab(ui: UiState) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item { Text("Profile", style = MaterialTheme.typography.titleMedium) }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    ui.personal?.personal?.entries?.take(10)?.forEach { (k, v) ->
+                        Text("${k.replace('_', ' ')}: ${v.toString().trim('"')}", style = MaterialTheme.typography.bodyMedium)
+                    } ?: Text("No profile cached yet.")
+                }
+            }
+        }
+        item { Text("Attendance", style = MaterialTheme.typography.titleMedium) }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    val att = ui.attendance
+                    if (att == null) { Text("No attendance cached yet.") }
+                    else {
+                        att.today?.sessions?.forEach { s ->
+                            Text("${s.session}: ${s.mark?.name ?: "?"}" + if (s.minutes_late > 0) " (${s.minutes_late} min late)" else "")
+                        }
+                        val p = att.statutory.sumOf { it.values["present"] ?: 0 }
+                        val a = att.statutory.sumOf { (it.values["absent"] ?: 0) + (it.values["unauthorised"] ?: 0) }
+                        if (p + a > 0) {
+                            Text("%.1f%% present".format(100.0 * p / (p + a)), fontWeight = FontWeight.Bold)
+                        }
+                        att.lesson.take(8).forEach { l ->
+                            val lp = l.values["present"] ?: 0
+                            val la = (l.values["absent"] ?: 0) + (l.values["unauthorised"] ?: 0)
+                            Text("${l.subject}: $lp present, $la absent", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+        }
+        item { Text("Exams", style = MaterialTheme.typography.titleMedium) }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    val ex = ui.exams
+                    if (ex == null) { Text("No exams cached yet.") }
+                    else {
+                        ex.countdown?.let { Text("Next exam: ${it.exam} in ${it.minutes_to_go / 1440} days", fontWeight = FontWeight.Bold) }
+                        ex.timetable.forEach { e ->
+                            Text("${e.datetime}  ${e.title}  ${e.room ?: ""} ${e.seat ?: ""}", style = MaterialTheme.typography.bodySmall)
+                        }
+                        ex.results.forEach { r ->
+                            Text("${r.date}  ${r.title}: ${r.result}", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+        }
+        item { Text("Calendar", style = MaterialTheme.typography.titleMedium) }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    val cal = ui.calendar
+                    if (cal == null || cal.calendar.isEmpty()) { Text("No events cached yet.") }
+                    else cal.calendar.take(15).forEach { e ->
+                        Text("${e.start_date.take(10)}  ${e.description}", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        }
+        item { Text("Notices", style = MaterialTheme.typography.titleMedium) }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    val nb = ui.notices
+                    if (nb == null || nb.noticeboard.isEmpty()) { Text("No notices cached yet.") }
+                    else {
+                        nb.noticeboard.forEach { n -> Text("${n.name} (${n.filename ?: ""})", style = MaterialTheme.typography.bodyMedium) }
+                        Text("Documents are listed only, never auto-downloaded.", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
+        item { Text("Clubs", style = MaterialTheme.typography.titleMedium) }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    val clubs = ui.clubs
+                    if (clubs == null || clubs.clubs.isEmpty()) { Text("No clubs cached yet.") }
+                    else clubs.clubs.forEach { c ->
+                        Text(c.name, fontWeight = FontWeight.SemiBold)
+                        c.description?.let { Text(stripHtml(it), style = MaterialTheme.typography.bodySmall) }
                     }
                 }
             }
