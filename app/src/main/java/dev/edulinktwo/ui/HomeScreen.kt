@@ -782,6 +782,7 @@ fun TimetableTab(ui: UiState, onLessonTap: (Lesson) -> Unit = {}) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         tb.weeks.forEach { week ->
             week.days.forEach { day ->
+                val orderedLessons = lessonsChronologically(day.lessons) { it.start_time }
                 item {
                     Text(
                         "${day.name ?: ""} (${day.date})" + if (day.date == today) " - today" else "",
@@ -789,7 +790,7 @@ fun TimetableTab(ui: UiState, onLessonTap: (Lesson) -> Unit = {}) {
                         color = if (day.date == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                     )
                 }
-                items(day.lessons.size, key = { day.date + "-lesson-" + it }) { idx -> val l = day.lessons[idx]
+                items(orderedLessons.size, key = { day.date + "-lesson-" + it }) { idx -> val l = orderedLessons[idx]
                     Card(Modifier.fillMaxWidth().clickable { onLessonTap(l) }) {
                         Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("${l.start_time ?: ""}\n${l.end_time ?: ""}", style = MaterialTheme.typography.labelSmall)
