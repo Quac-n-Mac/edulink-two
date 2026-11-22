@@ -20,6 +20,14 @@ pub mod methods {
     pub const TIMETABLE: &str = "EduLink.Timetable";
     pub const ACHIEVEMENT: &str = "EduLink.Achievement";
     pub const BEHAVIOUR: &str = "EduLink.Behaviour";
+    pub const ATTENDANCE: &str = "EduLink.Attendance";
+    pub const EXAMS: &str = "EduLink.Exams";
+    pub const NOTICEBOARD: &str = "EduLink.Noticeboard";
+    pub const CALENDAR: &str = "EduLink.Calendar";
+    pub const CLUBS: &str = "EduLink.Clubs";
+    pub const PERSONAL: &str = "EduLink.Personal";
+    pub const INBOX: &str = "Communicator.Inbox";
+    pub const OUTBOX: &str = "Communicator.Outbox";
 }
 
 pub struct Client<T: Transport> {
@@ -39,6 +47,13 @@ pub struct Prefetch {
     pub timetable: Surface<TimetableData>,
     pub achievement: Surface<AchievementData>,
     pub behaviour: Surface<BehaviourData>,
+    pub attendance: Surface<AttendanceData>,
+    pub exams: Surface<ExamsData>,
+    pub noticeboard: Surface<NoticeboardData>,
+    pub calendar: Surface<CalendarData>,
+    pub clubs: Surface<ClubsData>,
+    pub personal: Surface<PersonalData>,
+    pub inbox: Surface<MessagesData>,
     pub total_ms: u128,
 }
 
@@ -98,17 +113,31 @@ impl<T: Transport> Client<T> {
     /// per-surface results carry their own errors.
     pub async fn prefetch_all(&self, learner_id: &str, date: &str) -> Prefetch {
         let t = Instant::now();
-        let (hw, tb, ach, beh) = tokio::join!(
+        let (hw, tb, ach, beh, att, ex, nb, cal, cl, per, inbox) = tokio::join!(
             timed(self.homework()),
             timed(self.timetable(learner_id, date)),
             timed(self.achievement(learner_id)),
             timed(self.behaviour(learner_id)),
+            timed(self.attendance(learner_id)),
+            timed(self.exams(learner_id)),
+            timed(self.noticeboard()),
+            timed(self.calendar(learner_id, date)),
+            timed(self.clubs()),
+            timed(self.personal()),
+            timed(self.inbox()),
         );
         Prefetch {
             homework: Surface { result: hw.0, elapsed_ms: hw.1 },
             timetable: Surface { result: tb.0, elapsed_ms: tb.1 },
             achievement: Surface { result: ach.0, elapsed_ms: ach.1 },
             behaviour: Surface { result: beh.0, elapsed_ms: beh.1 },
+            attendance: Surface { result: att.0, elapsed_ms: att.1 },
+            exams: Surface { result: ex.0, elapsed_ms: ex.1 },
+            noticeboard: Surface { result: nb.0, elapsed_ms: nb.1 },
+            calendar: Surface { result: cal.0, elapsed_ms: cal.1 },
+            clubs: Surface { result: cl.0, elapsed_ms: cl.1 },
+            personal: Surface { result: per.0, elapsed_ms: per.1 },
+            inbox: Surface { result: inbox.0, elapsed_ms: inbox.1 },
             total_ms: t.elapsed().as_millis(),
         }
     }
@@ -163,6 +192,75 @@ impl<T: Transport> Client<T> {
             )
             .await?;
         serde_json::from_value(v).context("parse behaviour")
+    }
+
+    pub async fn attendance(&self, learner_id: &str) -> Result<AttendanceData> {
+        let v = self
+            .transport
+            .call(methods::ATTENDANCE, json!({"learner_id": learner_id, "format": 2}))
+            .await?;
+        serde_json::from_value(v).context("parse attendance")
+    }
+
+    pub async fn exams(&self, learner_id: &str) -> Result<ExamsData> {
+        let v = self
+            .transport
+            .call(methods::EXAMS, json!({"learner_id": learner_id, "format": 2}))
+            .await?;
+        serde_json::from_value(v).context("parse exams")
+    }
+
+    pub async fn noticeboard(&self) -> Result<NoticeboardData> {
+        let v = self
+            .transport
+            .call(methods::NOTICEBOARD, json!({"format": 2}))
+            .await?;
+        serde_json::from_value(v).context("parse noticeboard")
+    }
+
+    pub async fn calendar(&self, learner_id: &str, date: &str) -> Result<CalendarData> {
+        let v = self
+            .transport
+            .call(
+                methods::CALENDAR,
+                json!({"learner_id": learner_id, "date": date, "format": 2}),
+            )
+            .await?;
+        serde_json::from_value(v).context("parse calendar")
+    }
+
+    pub async fn clubs(&self) -> Result<ClubsData> {
+        let v = self
+            .transport
+            .call(methods::CLUBS, json!({"format": 2}))
+            .await?;
+        serde_json::from_value(v).context("parse clubs")
+    }
+
+    pub async fn personal(&self) -> Result<PersonalData> {
+        let v = self
+            .transport
+            .call(methods::PERSONAL, json!({"format": 2}))
+            .await?;
+        serde_json::from_value(v).context("parse personal")
+    }
+
+    /// Read-only inbox listing. Never calls MessageMarkRead.
+    pub async fn inbox(&self) -> Result<MessagesData> {
+        let v = self
+            .transport
+            .call(methods::INBOX, json!({"format": 2}))
+            .await?;
+        serde_json::from_value(v).context("parse inbox")
+    }
+
+    /// Read-only outbox listing.
+    pub async fn outbox(&self) -> Result<MessagesData> {
+        let v = self
+            .transport
+            .call(methods::OUTBOX, json!({"format": 2}))
+            .await?;
+        serde_json::from_value(v).context("parse outbox")
     }
 
     pub async fn status(&self) -> Result<StatusData> {
