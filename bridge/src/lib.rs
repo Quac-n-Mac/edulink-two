@@ -84,6 +84,13 @@ async fn do_login(state_dir: PathBuf, cache_dir: PathBuf, host: String, username
     if let Ok(d) = pre.timetable.result { cache.write("timetable", &d).await?; ok += 1; } else if let Err(e) = pre.timetable.result { failed.push(format!("timetable: {e:#}")); }
     if let Ok(d) = pre.achievement.result { cache.write("achievement", &d).await?; ok += 1; } else if let Err(e) = pre.achievement.result { failed.push(format!("achievement: {e:#}")); }
     if let Ok(d) = pre.behaviour.result { cache.write("behaviour", &d).await?; ok += 1; } else if let Err(e) = pre.behaviour.result { failed.push(format!("behaviour: {e:#}")); }
+    if let Ok(d) = pre.attendance.result { cache.write("attendance", &d).await?; ok += 1; } else if let Err(e) = pre.attendance.result { failed.push(format!("attendance: {e:#}")); }
+    if let Ok(d) = pre.exams.result { cache.write("exams", &d).await?; ok += 1; } else if let Err(e) = pre.exams.result { failed.push(format!("exams: {e:#}")); }
+    if let Ok(d) = pre.noticeboard.result { cache.write("noticeboard", &d).await?; ok += 1; } else if let Err(e) = pre.noticeboard.result { failed.push(format!("noticeboard: {e:#}")); }
+    if let Ok(d) = pre.calendar.result { cache.write("calendar", &d).await?; ok += 1; } else if let Err(e) = pre.calendar.result { failed.push(format!("calendar: {e:#}")); }
+    if let Ok(d) = pre.clubs.result { cache.write("clubs", &d).await?; ok += 1; } else if let Err(e) = pre.clubs.result { failed.push(format!("clubs: {e:#}")); }
+    if let Ok(d) = pre.personal.result { cache.write("personal", &d).await?; ok += 1; } else if let Err(e) = pre.personal.result { failed.push(format!("personal: {e:#}")); }
+    if let Ok(d) = pre.inbox.result { cache.write("inbox", &d).await?; ok += 1; } else if let Err(e) = pre.inbox.result { failed.push(format!("inbox: {e:#}")); }
     Ok(json!({
         "ok": true,
         "key": session.key(),
@@ -111,6 +118,13 @@ async fn do_refresh(state_dir: PathBuf, cache_dir: PathBuf) -> Result<Value> {
     if let Ok(d) = pre.timetable.result { cache.write("timetable", &d).await?; ok += 1; } else if let Err(e) = pre.timetable.result { failed.push(format!("timetable: {e:#}")); }
     if let Ok(d) = pre.achievement.result { cache.write("achievement", &d).await?; ok += 1; } else if let Err(e) = pre.achievement.result { failed.push(format!("achievement: {e:#}")); }
     if let Ok(d) = pre.behaviour.result { cache.write("behaviour", &d).await?; ok += 1; } else if let Err(e) = pre.behaviour.result { failed.push(format!("behaviour: {e:#}")); }
+    if let Ok(d) = pre.attendance.result { cache.write("attendance", &d).await?; ok += 1; } else if let Err(e) = pre.attendance.result { failed.push(format!("attendance: {e:#}")); }
+    if let Ok(d) = pre.exams.result { cache.write("exams", &d).await?; ok += 1; } else if let Err(e) = pre.exams.result { failed.push(format!("exams: {e:#}")); }
+    if let Ok(d) = pre.noticeboard.result { cache.write("noticeboard", &d).await?; ok += 1; } else if let Err(e) = pre.noticeboard.result { failed.push(format!("noticeboard: {e:#}")); }
+    if let Ok(d) = pre.calendar.result { cache.write("calendar", &d).await?; ok += 1; } else if let Err(e) = pre.calendar.result { failed.push(format!("calendar: {e:#}")); }
+    if let Ok(d) = pre.clubs.result { cache.write("clubs", &d).await?; ok += 1; } else if let Err(e) = pre.clubs.result { failed.push(format!("clubs: {e:#}")); }
+    if let Ok(d) = pre.personal.result { cache.write("personal", &d).await?; ok += 1; } else if let Err(e) = pre.personal.result { failed.push(format!("personal: {e:#}")); }
+    if let Ok(d) = pre.inbox.result { cache.write("inbox", &d).await?; ok += 1; } else if let Err(e) = pre.inbox.result { failed.push(format!("inbox: {e:#}")); }
     Ok(json!({"ok": failed.is_empty(), "surfaces_ok": ok, "failed": failed, "total_ms": pre.total_ms}))
 }
 
