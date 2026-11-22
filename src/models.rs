@@ -100,7 +100,10 @@ pub struct LoginData {
     /// The session bearer token. The wire name is `authtoken`.
     #[serde(alias = "auth_token")]
     pub authtoken: String,
-    pub user: UserInfo,
+    /// Identity. NOTE: the real format=2 Login response carries no user -
+    /// identity comes from LoginContext, merged in `Client::login`.
+    #[serde(default)]
+    pub user: Option<UserInfo>,
     #[serde(default)]
     pub children: Vec<UserInfo>,
     #[serde(default)]
