@@ -3,6 +3,7 @@
 //! and only touches the network to refresh.
 
 use crate::cache::{Cache, Cached, TTL_HOMEWORK, TTL_HW_DETAIL, TTL_POINTS, TTL_TIMETABLE};
+const TTL_SLOW: Duration = Duration::hours(12);
 use crate::client::Client;
 use crate::models::*;
 use crate::session::{AccountStore, Session};
@@ -76,6 +77,20 @@ pub enum Cmd {
     Points,
     /// Current/next lesson.
     Status,
+    /// Attendance (today, statutory %, per-lesson).
+    Att,
+    /// Exams (countdown, timetable, entries, results).
+    Exams,
+    /// School noticeboard.
+    Notices,
+    /// School calendar.
+    Cal { date: Option<String> },
+    /// Clubs.
+    Clubs,
+    /// Profile / personal details.
+    Me,
+    /// Messages (read-only inbox listing; never marks anything read).
+    Msg,
     /// Full-screen terminal UI.
     Tui,
 }
@@ -398,7 +413,25 @@ async fn run_with<T: Transport + 'static>(args: &Args, client: Client<T>, sessio
             } else if let Err(e) = pre.behaviour.result {
                 println!("behaviour:  FAILED ({e:#})");
             }
-            println!("synced {ok}/4 surfaces in {}ms (parallel)", pre.total_ms);
+            macro_rules! sync_surface {
+                ($f:ident, $name:literal) => {
+                    if let Ok(d) = pre.$f.result {
+                        cache.write($name, &d).await?;
+                        ok += 1;
+                        println!("{:<12}{:>5}ms", $name, pre.$f.elapsed_ms);
+                    } else if let Err(e) = pre.$f.result {
+                        println!("{:<12}FAILED ({e:#})", $name);
+                    }
+                };
+            }
+            sync_surface!(attendance, "attendance");
+            sync_surface!(exams, "exams");
+            sync_surface!(noticeboard, "noticeboard");
+            sync_surface!(calendar, "calendar");
+            sync_surface!(clubs, "clubs");
+            sync_surface!(personal, "personal");
+            sync_surface!(inbox, "inbox");
+            println!("synced {ok}/11 surfaces in {}ms (parallel)", pre.total_ms);
             Ok(())
         }
         Cmd::Hw => {
@@ -466,6 +499,121 @@ async fn run_with<T: Transport + 'static>(args: &Args, client: Client<T>, sessio
             println!();
             println!("{}", footnote(&src));
             Ok(())
+        }
+        Cmd::Att => {
+            let (d, src) = surface(&cache, "attendance", TTL_SLOW, args.refresh, args.offline, || client.attendance(&learner)).await?;
+            if args.json { return print_json(&d.data); }
+            if let Some(t) = &d.data.today {
+                println!("TODAY");
+                for s in &t.sessions {
+                    let m = s.mark.as_ref();
+                    println!("  {}: {} ({})", s.session, m.map(|m| m.name.as_str()).unwrap_or("?"), if s.minutes_late > 0 { format!("{} min late", s.minutes_late) } else { "on time".into() });
+                }
+            }
+            let tot_p: i64 = d.data.statutory.iter().map(|m| m.values.get("present").copied().unwrap_or(0)).sum();
+            let tot_a: i64 = d.data.statutory.iter().map(|m| m.values.get("absent").copied().unwrap_or(0)).sum();
+            let tot_u: i64 = d.data.statutory.iter().map(|m| m.values.get("unauthorised").copied().unwrap_or(0)).sum();
+            let total = tot_p + tot_a + tot_u;
+            if total > 0 {
+                println!();
+                println!("STATUTORY: {:.1}% present ({} present / {} sessions, {} absent, {} unauthorised)",
+                    100.0 * tot_p as f64 / total as f64, tot_p, total, tot_a, tot_u);
+            }
+            for m in &d.data.statutory {
+                for e in &m.exceptions {
+                    println!("  exception: {} {} - {}", e.date, e.period, e.description);
+                }
+            }
+            if !d.data.lesson.is_empty() {
+                println!();
+                println!("BY LESSON");
+                for l in &d.data.lesson {
+                    let p = l.values.get("present").copied().unwrap_or(0);
+                    let a = l.values.get("absent").copied().unwrap_or(0) + l.values.get("unauthorised").copied().unwrap_or(0);
+                    let lt = l.values.get("late").copied().unwrap_or(0);
+                    println!("  {:<14} {} present, {} absent, {} late", l.subject, p, a, lt);
+                }
+            }
+            println!(); println!("{}", footnote(&src)); Ok(())
+        }
+        Cmd::Exams => {
+            let (d, src) = surface(&cache, "exams", TTL_SLOW, args.refresh, args.offline, || client.exams(&learner)).await?;
+            if args.json { return print_json(&d.data); }
+            if let Some(c) = &d.data.countdown {
+                let days = c.minutes_to_go / 1440;
+                println!("NEXT EXAM: {} in {} days", c.exam, days);
+                println!();
+            }
+            if !d.data.timetable.is_empty() {
+                println!("EXAM TIMETABLE");
+                for e in &d.data.timetable {
+                    println!("  {:<16}  {:<8}  {:<28}  {}  {}", e.datetime, e.code, truncate(&e.title, 28), e.room.clone().unwrap_or_default(), e.seat.clone().unwrap_or_default());
+                }
+            }
+            if !d.data.results.is_empty() {
+                println!();
+                println!("RESULTS");
+                for r in &d.data.results {
+                    println!("  {:<10}  {:<8}  {:<28}  {}", r.date, r.code, truncate(&r.title, 28), r.result);
+                }
+            }
+            println!(); println!("{}", footnote(&src)); Ok(())
+        }
+        Cmd::Notices => {
+            let (d, src) = surface(&cache, "noticeboard", TTL_SLOW, args.refresh, args.offline, || client.noticeboard()).await?;
+            if args.json { return print_json(&d.data); }
+            for n in &d.data.noticeboard {
+                println!("  {} ({})", n.name, n.filename.clone().unwrap_or_default());
+            }
+            println!("(documents listed only, never auto-downloaded)");
+            println!(); println!("{}", footnote(&src)); Ok(())
+        }
+        Cmd::Cal { date } => {
+            let date = date.clone().unwrap_or_else(|| today.clone());
+            let (d, src) = surface(&cache, "calendar", TTL_SLOW, args.refresh, args.offline, || client.calendar(&learner, &date)).await?;
+            if args.json { return print_json(&d.data); }
+            for e in &d.data.calendar {
+                let start = e.start_date.get(0..10).unwrap_or(&e.start_date);
+                println!("  {:<10}  {}{}", start, e.description, e.notes.as_ref().map(|n| format!(" ({n})")).unwrap_or_default());
+            }
+            println!(); println!("{}", footnote(&src)); Ok(())
+        }
+        Cmd::Clubs => {
+            let (d, src) = surface(&cache, "clubs", TTL_SLOW, args.refresh, args.offline, || client.clubs()).await?;
+            if args.json { return print_json(&d.data); }
+            for c in &d.data.clubs {
+                println!("  {}", c.name);
+                if let Some(desc) = &c.description {
+                    let t = strip_html(desc);
+                    if !t.is_empty() { println!("    {}", truncate(&t, 70)); }
+                }
+            }
+            println!(); println!("{}", footnote(&src)); Ok(())
+        }
+        Cmd::Me => {
+            let (d, src) = surface(&cache, "personal", TTL_SLOW, args.refresh, args.offline, || client.personal()).await?;
+            if args.json { return print_json(&d.data); }
+            if let Some(obj) = d.data.personal.as_object() {
+                for (k, v) in obj {
+                    let val = match v { serde_json::Value::String(s) => s.clone(), other => other.to_string() };
+                    println!("  {:<22} {}", k.replace('_', " "), val);
+                }
+            }
+            println!(); println!("{}", footnote(&src)); Ok(())
+        }
+        Cmd::Msg => {
+            let (d, src) = surface(&cache, "inbox", TTL_POINTS, args.refresh, args.offline, || client.inbox()).await?;
+            if args.json { return print_json(&d.data); }
+            for m in &d.data.messages {
+                let unread = m.read.is_none() || m.read.as_deref() == Some("");
+                println!("  {}{:<16}  {:<30}  {}",
+                    if unread { "* " } else { "  " },
+                    m.date,
+                    truncate(&m.subject, 30),
+                    m.sender.as_ref().map(|s| s.name.as_str()).unwrap_or(""));
+            }
+            println!("(* = unread; reading here never marks it read in Edulink)");
+            println!(); println!("{}", footnote(&src)); Ok(())
         }
         Cmd::Login { .. } | Cmd::Logout { .. } | Cmd::Accounts | Cmd::Switch { .. } | Cmd::Tui => unreachable!(),
     }
