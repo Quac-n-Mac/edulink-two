@@ -43,7 +43,7 @@ fn client_for(session: &Session) -> Result<Client<HttpTransport>> {
     Ok(Client::new(t, session.host.clone(), session.username.clone()))
 }
 
-async fn do_login(state_dir: PathBuf, cache_dir: PathBuf, host: String, username: String, password: String, learner_id: String) -> Result<Value> {
+async fn do_login(state_dir: PathBuf, cache_dir: PathBuf, host: String, school_code: String, school_id: i64, username: String, password: String, learner_id: String) -> Result<Value> {
     let t = HttpTransport::new(&host)?;
     t.set_degraded(DEGRADED.load(Ordering::Relaxed));
     let client = Client::new(t, host.clone(), username.clone());
@@ -51,6 +51,7 @@ async fn do_login(state_dir: PathBuf, cache_dir: PathBuf, host: String, username
     let (login, pre) = client
         .login(
             &password,
+            school_id,
             if learner_id.is_empty() { None } else { Some(learner_id.as_str()) },
             &date,
         )
@@ -73,6 +74,8 @@ async fn do_login(state_dir: PathBuf, cache_dir: PathBuf, host: String, username
         },
         display_name: login.user.display(),
         school,
+        school_code,
+        school_id,
         saved_at: chrono::Utc::now(),
     };
     let mut store = AccountStore::load(&state_dir)?;
@@ -97,6 +100,7 @@ async fn do_login(state_dir: PathBuf, cache_dir: PathBuf, host: String, username
         "display_name": session.display_name,
         "school": session.school,
         "learner_id": session.learner_id,
+        "school_id": session.school_id,
         "surfaces_ok": ok,
         "failed": failed,
         "prefetch_ms": pre.total_ms,
@@ -191,6 +195,39 @@ async fn do_hw_detail(state_dir: PathBuf, cache_dir: PathBuf, id: String) -> Res
     }
 }
 
+/// Pre-login: resolve a school code/postcode to host + establishment id,
+/// then fetch the school's display name + crest for the credentials
+/// screen. Mirrors the stock app's two-step login.
+async fn do_resolve_school(code: String) -> Result<Value> {
+    let info = edulink_two::client::resolve_school(&code).await?;
+    let (name, logo) = edulink_two::client::school_details(&info.host, info.school_id)
+        .await
+        .unwrap_or((String::new(), None));
+    Ok(json!({
+        "ok": true,
+        "host": info.host,
+        "school_id": info.school_id,
+        "name": name,
+        "logo_b64": logo,
+    }))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_edulinktwo_RustBridge_nativeResolveSchool(
+    mut env: JNIEnv,
+    _class: JClass,
+    code: JString,
+) -> jstring {
+    let out = (|| -> Result<String> {
+        let code = get(&mut env, &code)?;
+        Ok(block_on(do_resolve_school(code))?.to_string())
+    })();
+    match out {
+        Ok(s) => to_jstring(&mut env, s),
+        Err(e) => to_jstring(&mut env, err_str(&e)),
+    }
+}
+
 #[no_mangle]
 pub extern "system" fn Java_dev_edulinktwo_RustBridge_nativeLogin(
     mut env: JNIEnv,
@@ -198,6 +235,8 @@ pub extern "system" fn Java_dev_edulinktwo_RustBridge_nativeLogin(
     state_dir: JString,
     cache_dir: JString,
     host: JString,
+    school_code: JString,
+    school_id: JString,
     username: JString,
     password: JString,
     learner_id: JString,
@@ -206,10 +245,12 @@ pub extern "system" fn Java_dev_edulinktwo_RustBridge_nativeLogin(
         let state_dir = PathBuf::from(get(&mut env, &state_dir)?);
         let cache_dir = PathBuf::from(get(&mut env, &cache_dir)?);
         let host = get(&mut env, &host)?;
+        let school_code = get(&mut env, &school_code)?;
+        let school_id: i64 = get(&mut env, &school_id)?.parse().context("school_id must be a number")?;
         let username = get(&mut env, &username)?;
         let password = get(&mut env, &password)?;
         let learner_id = get(&mut env, &learner_id)?;
-        Ok(block_on(do_login(state_dir, cache_dir, host, username, password, learner_id))?.to_string())
+        Ok(block_on(do_login(state_dir, cache_dir, host, school_code, school_id, username, password, learner_id))?.to_string())
     })();
     match out {
         Ok(s) => to_jstring(&mut env, s),
@@ -293,6 +334,8 @@ pub extern "system" fn Java_dev_edulinktwo_RustBridge_nativeAccounts(
                 "display_name": s.display_name,
                 "school": s.school,
                 "host": s.host,
+                "school_id": s.school_id,
+                "school_code": s.school_code,
             })).collect::<Vec<_>>(),
         })
         .to_string())
