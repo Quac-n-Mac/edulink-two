@@ -1,0 +1,85 @@
+name: android-apk
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sdkmanager 2>/dev/null || true
+          mkdir -p $HOME/android-sdk/cmdline-tools/latest
+          curl -sL -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools
+          mv /tmp/cmdtools/cmdline-tools/* $HOME/android-sdk/cmdline-tools/latest/
+          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$HOME/android-sdk/platform-tools" >> $GITHUB_PATH
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" >/dev/null
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Build Rust core (arm64-v8a, release)
+        run: |
+          cargo ndk -t arm64-v8a -o app/src/main/jniLibs build --release -p edulink-bridge
+          ls -la app/src/main/jniLibs/arm64-v8a/
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode signing keystore (if secrets are set)
+        run: |
+          echo "${{ secrets.SIGNING_KEYSTORE_B64 }}" | base64 -d > /tmp/keystore.p12 2>/dev/null || true
+          [ -s /tmp/keystore.p12 ] || rm -f /tmp/keystore.p12
+
+      - name: Build APK (signed release if keystore present, else debug)
+        run: |
+          if [ -f /tmp/keystore.p12 ]; then
+            ./gradlew :app:assembleRelease \
+              -Pandroid.injected.signing.store.file=/tmp/keystore.p12 \
+              -Pandroid.injected.signing.store.password="${{ secrets.SIGNING_STORE_PASSWORD }}" \
+              -Pandroid.injected.signing.key.alias="${{ secrets.SIGNING_KEY_ALIAS }}" \
+              -Pandroid.injected.signing.key.password="${{ secrets.SIGNING_KEY_PASSWORD }}"
+          else
+            ./gradlew :app:assembleDebug
+          fi
+
+      - name: Rename APK
+        run: |
+          mkdir -p out
+          APK=$(ls app/build/outputs/apk/release/*.apk app/build/outputs/apk/debug/*.apk 2>/dev/null | head -1)
+          cp "$APK" out/edulink-two.apk
+          ls -la out/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edulink-two-apk
+          path: out/
+
+      - name: Publish prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.0-nightly
+          name: Edulink Two v0.1.0 (nightly)
+          prerelease: true
+          files: out/edulink-two.apk
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
