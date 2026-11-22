@@ -16,7 +16,7 @@ async fn login_prefetches_everything() {
         .login("fixture-password", 81, None, "2026-11-23")
         .await
         .expect("login");
-    assert_eq!(login.user.display(), "Test Student");
+    assert_eq!(login.user.as_ref().unwrap().display(), "Test Student");
     assert!(pre.homework.result.is_ok());
     assert!(pre.timetable.result.is_ok());
     assert!(pre.achievement.result.is_ok());
