@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
 
-enum class Tab { HOMEWORK, TIMETABLE, POINTS }
+enum class Tab { HOMEWORK, TIMETABLE, MESSAGES, POINTS, MORE }
 
 data class UiState(
     val loggedIn: Boolean = false,
@@ -25,6 +25,13 @@ data class UiState(
     val timetable: TimetableData? = null,
     val achievement: AchievementData? = null,
     val behaviour: BehaviourData? = null,
+    val attendance: AttendanceData? = null,
+    val exams: ExamsData? = null,
+    val notices: NoticeboardData? = null,
+    val calendar: CalendarData? = null,
+    val clubs: ClubsData? = null,
+    val personal: PersonalData? = null,
+    val inbox: MessagesData? = null,
     val lastUpdated: String? = null,
     val refreshing: Boolean = false,
     val degraded: Boolean = false,
@@ -55,6 +62,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val tb = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "timetable") }.getOrNull()
             val ach = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "achievement") }.getOrNull()
             val beh = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "behaviour") }.getOrNull()
+            val att = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "attendance") }.getOrNull()
+            val ex = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "exams") }.getOrNull()
+            val nb = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "noticeboard") }.getOrNull()
+            val cal = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "calendar") }.getOrNull()
+            val cl = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "clubs") }.getOrNull()
+            val per = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "personal") }.getOrNull()
+            val inbox = runCatching { RustBridge.nativeGetCached(stateDir, cacheDir, "inbox") }.getOrNull()
             val (hwData, hwAt) = decodeSurface<HomeworkData>(hw)
             val (tbData, _) = decodeSurface<TimetableData>(tb)
             val (achData, _) = decodeSurface<AchievementData>(ach)
@@ -62,6 +76,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _ui.value = _ui.value.copy(
                 homework = hwData, timetable = tbData,
                 achievement = achData, behaviour = behData,
+                attendance = decodeSurface<AttendanceData>(att).first,
+                exams = decodeSurface<ExamsData>(ex).first,
+                notices = decodeSurface<NoticeboardData>(nb).first,
+                calendar = decodeSurface<CalendarData>(cal).first,
+                clubs = decodeSurface<ClubsData>(cl).first,
+                personal = decodeSurface<PersonalData>(per).first,
+                inbox = decodeSurface<MessagesData>(inbox).first,
                 lastUpdated = hwAt
             )
         }
