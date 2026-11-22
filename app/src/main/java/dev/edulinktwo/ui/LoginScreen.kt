@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -54,7 +55,12 @@ fun LoginScreen(ui: UiState, vm: AppViewModel) {
     var school by remember { mutableStateOf<SchoolResolveResult?>(null) }
     var schoolCode by remember { mutableStateOf("") }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    // Liquid glass backdrop: the gradient + doodle behind the controls.
+    val glassBackdrop = remember { GlassBackdrop() }
+    val glassLayer = rememberGraphicsLayer()
+    val glassScope = rememberCoroutineScope()
+
+    Box(modifier = Modifier.fillMaxSize().glassBackdrop(glassBackdrop, glassLayer, glassScope)) {
         // 1:1 background: gradient + the original doodle overlay.
         Box(
             modifier = Modifier
@@ -76,6 +82,7 @@ fun LoginScreen(ui: UiState, vm: AppViewModel) {
             )
             LoginStep.CODE -> SchoolCodeStep(
                 hasAccounts = ui.accounts.isNotEmpty(),
+                backdrop = glassBackdrop,
                 onBack = { step = LoginStep.PICKER },
                 onResolved = { code, result ->
                     schoolCode = code
@@ -87,6 +94,7 @@ fun LoginScreen(ui: UiState, vm: AppViewModel) {
             LoginStep.CREDENTIALS -> CredentialsStep(
                 school = school!!,
                 schoolCode = schoolCode,
+                backdrop = glassBackdrop,
                 onBack = { step = LoginStep.CODE },
                 vm = vm
             )
@@ -145,13 +153,19 @@ private fun PillButton(text: String, enabled: Boolean, busy: Boolean = false, on
 }
 
 @Composable
-private fun DemoButton(onClick: () -> Unit) {
+private fun DemoButton(onClick: () -> Unit, backdrop: GlassBackdrop? = null) {
+    val glassMod = if (backdrop != null) {
+        Modifier.liquidGlass(backdrop, cornerRadius = 30.dp, edgeWidth = 10.dp, refrStrength = 9.dp, baseAlpha = 0.4f)
+    } else {
+        Modifier
+            .clip(RoundedCornerShape(30.dp))
+            .border(1.5.dp, Color.White, RoundedCornerShape(30.dp))
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth(0.65f)
             .height(47.dp)
-            .clip(RoundedCornerShape(30.dp))
-            .border(1.5.dp, Color.White, RoundedCornerShape(30.dp))
+            .then(glassMod)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -180,6 +194,7 @@ private fun loginFieldColors() = TextFieldDefaults.colors(
 @Composable
 private fun SchoolCodeStep(
     hasAccounts: Boolean,
+    backdrop: GlassBackdrop? = null,
     onBack: () -> Unit,
     onResolved: (String, SchoolResolveResult) -> Unit,
     vm: AppViewModel
@@ -239,7 +254,7 @@ private fun SchoolCodeStep(
                 }
             )
             Spacer(Modifier.height(16.dp))
-            DemoButton(onClick = { })
+            DemoButton(onClick = { }, backdrop = backdrop)
         }
     }
 }
@@ -248,6 +263,7 @@ private fun SchoolCodeStep(
 private fun CredentialsStep(
     school: SchoolResolveResult,
     schoolCode: String,
+    backdrop: GlassBackdrop? = null,
     onBack: () -> Unit,
     vm: AppViewModel
 ) {
@@ -368,7 +384,7 @@ private fun CredentialsStep(
                 }
             )
             Spacer(Modifier.height(16.dp))
-            DemoButton(onClick = { })
+            DemoButton(onClick = { }, backdrop = backdrop)
         }
     }
 }

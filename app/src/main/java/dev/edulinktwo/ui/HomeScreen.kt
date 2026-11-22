@@ -28,6 +28,11 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import android.graphics.BitmapFactory
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import kotlinx.coroutines.delay
 import dev.edulinktwo.*
 import java.time.LocalDate
 
@@ -40,8 +45,27 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     var detailError by remember { mutableStateOf<String?>(null) }
     var attachmentBusy by remember { mutableStateOf(false) }
 
-    Scaffold(
-        topBar = {
+    // Liquid glass plumbing: the content below the floating bars is the
+    // backdrop texture the lens shader refracts.
+    val glassBackdrop = remember { GlassBackdrop() }
+    val glassLayer = rememberGraphicsLayer()
+    val glassScope = rememberCoroutineScope()
+    LaunchedEffect(ui.tab, ui.lastUpdated) { glassBackdrop.captureVersion++ }
+    LaunchedEffect(detail != null || detailLoading) { glassBackdrop.captureVersion++ }
+    LaunchedEffect(Unit) {
+        // periodic refresh keeps the backdrop fresh while lists scroll
+        while (true) { delay(900); glassBackdrop.captureVersion++ }
+    }
+
+    // Back gesture: sheets dismiss first, then tabs pop to root; the system
+    // only exits the app at the root tab.
+    val anySheet = detail != null || detailLoading || detailError != null
+    BackHandler(enabled = anySheet) { detail = null; detailLoading = false; detailError = null }
+    BackHandler(enabled = accountSheet) { accountSheet = false }
+    BackHandler(enabled = !anySheet && !accountSheet && ui.tab != Tab.HOMEWORK) { vm.selectTab(Tab.HOMEWORK) }
+
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().glassBackdrop(glassBackdrop, glassLayer, glassScope)) {
             TopAppBar(
                 title = {
                     Column {
@@ -57,23 +81,10 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                     IconButton(onClick = { vm.refresh() }) { Icon(Icons.Default.Refresh, "Refresh") }
                 }
             )
-        },
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(ui.tab == Tab.HOMEWORK, { vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, label = { Text("Homework") })
-                NavigationBarItem(ui.tab == Tab.TIMETABLE, { vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, label = { Text("Timetable") })
-                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    ProfileNavButton(ui, vm, onTap = { vm.selectTab(Tab.PROFILE) }, onLong = { accountSheet = true })
-                }
-                NavigationBarItem(ui.tab == Tab.POINTS, { vm.selectTab(Tab.POINTS) }, { Icon(Icons.Default.Star, null) }, label = { Text("Points") })
-                NavigationBarItem(ui.tab == Tab.MORE, { vm.selectTab(Tab.MORE) }, { Icon(Icons.Default.Menu, null) }, label = { Text("More") })
-            }
-        }
-    ) { padding ->
         PullToRefreshBox(
             isRefreshing = ui.refreshing,
             onRefresh = { vm.refresh() },
-            modifier = Modifier.padding(padding)
+            modifier = Modifier.weight(1f).padding(bottom = 88.dp)
         ) {
             // Fast transitions: 120ms, no slow fades.
             AnimatedContent(
@@ -98,10 +109,41 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 }
             }
         }
+        }
+
+        // Floating liquid-glass tab bar (navigation layer, per Apple HIG)
+        Row(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+                .fillMaxWidth()
+                .liquidGlass(glassBackdrop, cornerRadius = 30.dp, edgeWidth = 12.dp, refrStrength = 12.dp, baseAlpha = 0.5f)
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            NavigationBarItem(ui.tab == Tab.HOMEWORK, { vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, label = { Text("Homework") })
+            NavigationBarItem(ui.tab == Tab.TIMETABLE, { vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, label = { Text("Timetable") })
+            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                ProfileNavButton(ui, vm, onTap = { vm.selectTab(Tab.PROFILE) }, onLong = { accountSheet = true })
+            }
+            NavigationBarItem(ui.tab == Tab.POINTS, { vm.selectTab(Tab.POINTS) }, { Icon(Icons.Default.Star, null) }, label = { Text("Points") })
+            NavigationBarItem(ui.tab == Tab.MORE, { vm.selectTab(Tab.MORE) }, { Icon(Icons.Default.Menu, null) }, label = { Text("More") })
+        }
     }
 
     if (detail != null || detailLoading || detailError != null) {
-        ModalBottomSheet(onDismissRequest = { detail = null; detailLoading = false; detailError = null }) {
+        ModalBottomSheet(
+            onDismissRequest = { detail = null; detailLoading = false; detailError = null },
+            containerColor = Color.Transparent,
+            dragHandle = null
+        ) {
+            Box(
+                Modifier
+                    .padding(horizontal = 12.dp)
+                    .padding(bottom = 20.dp)
+                    .liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 14.dp, refrStrength = 14.dp, baseAlpha = 0.62f, useWindowPos = true)
+            ) {
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
                 when {
                     detailLoading -> Text("Loading...", style = MaterialTheme.typography.bodyMedium)
@@ -143,6 +185,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                         detailError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                     }
                 }
+            }
             }
         }
     }
@@ -378,6 +421,7 @@ fun PointsTab(ui: UiState) {
 @Composable
 fun MoreTab(ui: UiState, vm: AppViewModel) {
     var section by remember { mutableStateOf<String?>(null) }
+    BackHandler(enabled = section != null) { section = null }
     when (section) {
         null -> {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
