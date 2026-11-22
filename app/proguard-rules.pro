@@ -1,0 +1,2 @@
+-keep class dev.edulinktwo.RustBridge { *; }
+-keepattributes *Annotation*
