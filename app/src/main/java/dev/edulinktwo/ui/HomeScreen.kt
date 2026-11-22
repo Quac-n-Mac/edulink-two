@@ -996,7 +996,7 @@ private fun MoreSection(title: String, onBack: () -> Unit, content: @Composable 
 @Composable
 private fun AttendanceSection(ui: UiState) {
     val att = ui.attendance
-    if (att == null) { Text("No attendance data yet - pull to refresh."); return }
+    if (att == null) { Text(ui.error ?: "Attendance has not loaded. Tap refresh in the header; if your session expired, sign in again."); return }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
             Text("Today", style = MaterialTheme.typography.titleSmall)
@@ -1114,7 +1114,7 @@ private fun ClubsSection(ui: UiState) {
     val clubs = ui.clubs
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
-            if (clubs == null || clubs.clubs.isEmpty()) { Text("No clubs yet - pull to refresh.") }
+            if (clubs == null || clubs.clubs.isEmpty()) { Text(if (clubs == null) ui.error ?: "Clubs have not loaded. Tap refresh in the header; sign in again if requested." else "No clubs are available in the current response.") }
             else clubs.clubs.forEach { c ->
                 Text(c.name, fontWeight = FontWeight.SemiBold)
                 c.description?.let { Text(stripHtml(it), style = MaterialTheme.typography.bodySmall) }

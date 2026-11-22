@@ -143,6 +143,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 withContext(Dispatchers.Main) { onDone(true, res, null) }
             } else {
+                recoverExpiredSession(res?.error)
                 withContext(Dispatchers.Main) { onDone(false, null, res?.error ?: "school not found") }
             }
         }
@@ -266,6 +267,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     else onDone(false, null, "could not save attachment")
                 }
             } else {
+                recoverExpiredSession(res?.error)
                 withContext(Dispatchers.Main) { onDone(false, null, res?.error ?: "attachment fetch failed") }
             }
         }
@@ -293,6 +295,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     else onDone(false, null, "could not save document")
                 }
             } else {
+                recoverExpiredSession(res?.error)
                 withContext(Dispatchers.Main) { onDone(false, null, res?.error ?: "document fetch failed") }
             }
         }
@@ -309,6 +312,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 raw?.let { runCatching { json.parseToJsonElement(it).jsonObject["error"]?.jsonPrimitive?.content }.getOrNull() }
                     ?: lastDecodeError ?: "register fetch failed (no response)"
             } else null
+            recoverExpiredSession(err)
             withContext(Dispatchers.Main) { onDone(d, err) }
         }
     }
@@ -326,7 +330,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 raw?.let { runCatching { json.parseToJsonElement(it).jsonObject["error"]?.jsonPrimitive?.content }.getOrNull() }
                     ?: lastDecodeError ?: "seating plan fetch failed (no response)"
             } else null
+            recoverExpiredSession(err)
             withContext(Dispatchers.Main) { onDone(d, err) }
+        }
+    }
+
+    private fun recoverExpiredSession(message: String?) {
+        if (message != null && sessionNeedsSignIn(listOf(message))) {
+            _ui.value = _ui.value.copy(sessionExpired = true, showLogin = true,
+                error = "Your school session expired. Sign in again. Your saved data is kept.")
         }
     }
 
@@ -341,6 +353,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 raw?.let { runCatching { json.parseToJsonElement(it).jsonObject["error"]?.jsonPrimitive?.content }.getOrNull() }
                     ?: lastDecodeError ?: "fetch failed (no response)"
             } else null
+            recoverExpiredSession(err)
             withContext(Dispatchers.Main) { onDone(d, err) }
         }
     }
@@ -378,6 +391,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     }.getOrNull()
                 } ?: lastDecodeError ?: "detail fetch failed (no response)"
             } else null
+            recoverExpiredSession(err)
             withContext(Dispatchers.Main) { onDone(d, err) }
         }
     }
