@@ -1,7 +1,7 @@
 package dev.edulinktwo.ui
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.EaseInOut
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
@@ -196,7 +196,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 Color(0xFF7A8AA0)  // More - slate
             )
             val selIdx = navTabs.indexOf(ui.tab).coerceAtLeast(0)
-            val slideIdx by animateFloatAsState(targetValue = selIdx.toFloat(), animationSpec = tween(400, easing = FastOutSlowInEasing), label = "navSlide")
+            val slideIdx by animateFloatAsState(targetValue = selIdx.toFloat(), animationSpec = tween(450, easing = EaseInOut), label = "navSlide")
             val lo = kotlin.math.floor(slideIdx).toInt().coerceIn(0, navTabs.lastIndex)
             val hi = kotlin.math.ceil(slideIdx).toInt().coerceIn(0, navTabs.lastIndex)
             val baseStain = lerp(navStains[lo], navStains[hi], slideIdx - lo)
