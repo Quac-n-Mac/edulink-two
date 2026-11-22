@@ -10,6 +10,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.graphics.TransformOrigin
@@ -1169,8 +1170,39 @@ fun ProfileTab(ui: UiState, vm: AppViewModel) {
             onDismissRequest = { viewer = false },
             properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
         ) {
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.88f)).clickable { viewer = false }, contentAlignment = Alignment.Center) {
-                Image(bitmap = avatar, contentDescription = "Profile photo", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxWidth(0.94f).clip(RoundedCornerShape(16.dp)))
+            // Fullscreen viewer: fills the screen, dims everything else,
+            // pinch to zoom (1x-6x) with pan, double-tap toggles zoom,
+            // single tap dismisses.
+            var zoom by remember { mutableFloatStateOf(1f) }
+            var pan by remember { mutableStateOf(Offset.Zero) }
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.92f)), contentAlignment = Alignment.Center) {
+                Image(
+                    bitmap = avatar,
+                    contentDescription = "Profile photo",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, panDelta, gestureZoom, _ ->
+                                zoom = (zoom * gestureZoom).coerceIn(1f, 6f)
+                                pan = if (zoom > 1f) pan + panDelta else Offset.Zero
+                            }
+                        }
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onTap = { viewer = false },
+                                onDoubleTap = {
+                                    if (zoom > 1f) { zoom = 1f; pan = Offset.Zero } else zoom = 2.5f
+                                }
+                            )
+                        }
+                        .graphicsLayer {
+                            scaleX = zoom
+                            scaleY = zoom
+                            translationX = pan.x
+                            translationY = pan.y
+                        }
+                )
             }
         }
     }
