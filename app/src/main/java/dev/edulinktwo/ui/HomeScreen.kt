@@ -99,7 +99,9 @@ private fun HomeworkStatusIcons(ui: UiState, onOpen: () -> Unit) {
             Spacer(Modifier.width(6.dp))
         }
         when {
-            current.isEmpty() -> Icon(Icons.Default.Remove, "No homework", tint = Color(0xFF9AA3B2), modifier = Modifier.size(20.dp))
+            current.isEmpty() -> Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(13.dp, 2.5.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF9AA3B2)))
+            }
             undone.isEmpty() -> Icon(Icons.Default.Check, "All homework complete", tint = Color(0xFF43A047), modifier = Modifier.size(22.dp))
             else -> Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Close, "Undone homework", tint = Color(0xFFE53935), modifier = Modifier.size(20.dp))
@@ -123,7 +125,8 @@ private class SlopedViewConfiguration(val base: ViewConfiguration, val mult: Flo
 @Composable
 fun HomeScreen(ui: UiState, vm: AppViewModel) {
     var accountSheet by remember { mutableStateOf(false) }
-    var avatarBig by remember { mutableStateOf(false) }
+    // Bottom popups sit at ~1/3 of the screen (was ~1/4 wrap-content).
+    val sheetMin = (LocalConfiguration.current.screenHeightDp * 0.34f).dp
     var detail by remember { mutableStateOf<HomeworkDetail?>(null) }
     var detailLoading by remember { mutableStateOf(false) }
     var detailError by remember { mutableStateOf<String?>(null) }
@@ -223,7 +226,8 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     val baseStain = lerp(navStains[lo], navStains[hi], slideIdx - lo)
     val profFactor = (1f - kotlin.math.abs(slideIdx - 2f)).coerceIn(0f, 1f)
     val stainAlpha = 0.55f * (1f - profFactor)
-    val pillH = 62.dp + 14.dp * profFactor
+    // Ring grows to wrap the 1.25x avatar (66 * 1.25 = 82.5dp) on PROFILE.
+    val pillH = 62.dp + 26.dp * profFactor
     val pillPad = 8.dp * (1f - profFactor) + 1.5.dp * profFactor
     val pillDrift = Modifier.graphicsLayer {
         translationY = (-tilt.y * 2.dp.toPx()) * VisualTuning.motionStrength
@@ -295,8 +299,6 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     // with resistance, squashes page + avatar, then springs back.
     val overdrag = remember { Animatable(0f) }
     val pagerScope = rememberCoroutineScope()
-    // Bottom popups sit at ~1/3 of the screen (was ~1/4 wrap-content).
-    val sheetMin = (LocalConfiguration.current.screenHeightDp * 0.34f).dp
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val bgBlur = if (android.os.Build.VERSION.SDK_INT >= 31 && (anySheet || accountSheet || lessonSel != null))
         Modifier.graphicsLayer {
@@ -467,7 +469,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         val itemCenterY = navY + 32.dp // items live in the fixed 64dp Row; navSize.height includes the gesture inset
         val profCenterY = avatarCenterY?.let { with(density) { it.toDp() } } ?: (itemCenterY - 16.dp)
         val centerY = itemCenterY + (profCenterY - itemCenterY) * profFactor
-        val profileMinWidth = 72.dp * profFactor
+        val profileMinWidth = 88.dp * profFactor
         val lensWidth = maxOf(itemW - pillPad * 2, profileMinWidth)
         Box(
             Modifier
@@ -492,17 +494,18 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 .offset(x = itemW2 * 2.5f - 33.dp, y = navY2 + 16.dp - 33.dp)
                 .size(66.dp)
                 .graphicsLayer {
+                    // Selected emphasis: the avatar grows to 1.25x as the
+                    // pill ring slides over it (profFactor tracks the pill).
+                    val sel = 1f + 0.25f * profFactor
                     val o = overdrag.value
-                    if (o != 0f) {
-                        translationX = o
-                        val pull = abs(o) / 240f
-                        scaleX = 1f - pull * 0.12f
-                        scaleY = 1f + pull * 0.06f
-                        transformOrigin = TransformOrigin(0.5f, 0.5f)
-                    }
+                    val pull = abs(o) / 240f
+                    translationX = o
+                    scaleX = sel * (1f - pull * 0.12f)
+                    scaleY = sel * (1f + pull * 0.06f)
+                    transformOrigin = TransformOrigin(0.5f, 0.5f)
                 }
         ) {
-            ProfileNavButton(ui, vm, onTap = { avatarBig = true }, onLong = { accountSheet = true }, onPlaced = { avatarCenterY = it })
+            ProfileNavButton(ui, vm, onTap = { vm.selectTab(Tab.PROFILE) }, onLong = { accountSheet = true }, onPlaced = { avatarCenterY = it })
         }
     }
 
@@ -531,22 +534,6 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             IconButton(onClick = { vm.refresh() }) { Icon(Icons.Default.Refresh, "Refresh") }
         }
     )
-    }
-
-    // Tap the pfp: big viewer. Long-press stays the profiles sheet.
-    if (avatarBig) {
-        androidx.compose.ui.window.Dialog(onDismissRequest = { avatarBig = false }) {
-            Column(Modifier.fillMaxWidth().clickable { avatarBig = false }, horizontalAlignment = Alignment.CenterHorizontally) {
-                val av = remember(ui.currentAccount) {
-                    vm.avatarFile(ui.currentAccount)?.let { BitmapFactory.decodeFile(it.absolutePath)?.asImageBitmap() }
-                }
-                if (av != null) {
-                    Image(av, null, Modifier.size(240.dp).clip(CircleShape).border(3.dp, Color.White, CircleShape))
-                } else {
-                    Box(Modifier.size(240.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
-                }
-            }
-        }
     }
 
     if (detail != null || detailLoading || detailError != null) {

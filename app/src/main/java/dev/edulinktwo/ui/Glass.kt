@@ -163,11 +163,16 @@ fun Modifier.glassBackdrop(
             val bmp = layer.toImageBitmap()
             if (v.toLong() >= backdrop.capturedVersion) {
                 val src = bmp.asAndroidBitmap()
-                // 1/12: deep enough that letters blur to unreadable mush.
+                // Bake the blur into real pixels: downscale hard, then
+                // upscale bilinearly. Smooth under ANY filter mode - the
+                // BitmapShader ctor that controls filtering is API 34+.
                 val fw = (src.width / 12).coerceAtLeast(1)
                 val fh = (src.height / 12).coerceAtLeast(1)
-                backdrop.frost = android.graphics.Bitmap.createScaledBitmap(src, fw, fh, true).asImageBitmap()
-                backdrop.frostScale = fw.toFloat() / src.width.toFloat()
+                val small = android.graphics.Bitmap.createScaledBitmap(src, fw, fh, true)
+                val hw2 = (src.width / 2).coerceAtLeast(1)
+                val hh2 = (src.height / 2).coerceAtLeast(1)
+                backdrop.frost = android.graphics.Bitmap.createScaledBitmap(small, hw2, hh2, true).asImageBitmap()
+                backdrop.frostScale = hw2.toFloat() / src.width.toFloat()
                 backdrop.scale = 1f
                 backdrop.bitmap = bmp
             }
@@ -222,14 +227,12 @@ fun Modifier.liquidGlass(
             val useFrost = frosted && backdrop.frost != null
             val bmp = if (useFrost) backdrop.frost!! else sharp
             val texScale = if (useFrost) backdrop.frostScale else backdrop.scale
-            // LINEAR filtering is load-bearing for the frost texture: the
-            // 3-arg ctor samples NEAREST, which renders the 1/8 downscale as
-            // pixelated coloured garbage instead of blur. (API 33+ path.)
+            // The frost texture has its blur baked into real pixels (see
+            // the capture), so shader filtering no longer matters.
             shader.setInputBuffer(
                 "backdrop",
                 android.graphics.BitmapShader(
-                    bmp.asAndroidBitmap(), Shader.TileMode.CLAMP, Shader.TileMode.CLAMP,
-                    android.graphics.BitmapShader.FILTER_MODE_LINEAR
+                    bmp.asAndroidBitmap(), Shader.TileMode.CLAMP, Shader.TileMode.CLAMP
                 )
             )
             shader.setFloatUniform("resolution", size.width, size.height)
