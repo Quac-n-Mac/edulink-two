@@ -3,10 +3,18 @@ package dev.edulinktwo.ui
 import androidx.compose.animation.core.EaseInOut
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.LocalOverscrollConfiguration
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.roundToInt
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -153,7 +161,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     LaunchedEffect(ui.tab) {
         val idx = navTabs.indexOf(ui.tab).coerceAtLeast(0)
         if (idx != pagerState.settledPage) {
-            pagerState.animateScrollToPage(idx, animationSpec = tween(if (VisualTuning.systemReducedMotion) 0 else VisualTuning.animationMs.toInt(), easing = EaseInOut))
+            pagerState.animateScrollToPage(idx, animationSpec = if (VisualTuning.systemReducedMotion) tween(0) else spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMediumLow))
         }
     }
     val slideIdx = dragIndex ?: (pagerState.currentPage + pagerState.currentPageOffsetFraction)
@@ -167,6 +175,36 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     val pillDrift = Modifier.graphicsLayer {
         translationY = (-tilt.y * 2.dp.toPx()) * VisualTuning.motionStrength
         translationX = (-tilt.x * 3.dp.toPx()) * VisualTuning.motionStrength
+    }
+    // Squash-and-stretch on the sliding pill: peak speed (mid-flight) is
+    // thinnest + longest, relaxing toward a circle at both ends.
+    val pillVel = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        var lastV = slideIdx
+        var lastT = System.nanoTime()
+        snapshotFlow { slideIdx }.collect { v ->
+            val now = System.nanoTime()
+            val dt = (now - lastT) / 1e9f
+            if (dt > 0.002f) {
+                pillVel.floatValue = pillVel.floatValue * 0.45f + ((v - lastV) / dt) * 0.55f
+                lastV = v
+                lastT = now
+            }
+        }
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            withFrameNanos { }
+            pillVel.floatValue *= 0.82f
+        }
+    }
+    val pillStretch = Modifier.graphicsLayer {
+        val s = (abs(pillVel.floatValue) / 18f).coerceIn(0f, 1f)
+        if (s > 0f) {
+            scaleX = 1f + 0.35f * s
+            scaleY = 1f - 0.18f * s
+            transformOrigin = TransformOrigin(0.5f, 0.5f)
+        }
     }
     var navPos by remember { mutableStateOf(Offset.Zero) }
     var navSize by remember { mutableStateOf(IntSize(1, 1)) }
@@ -187,6 +225,10 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     }
 
     Box(Modifier.fillMaxSize()) {
+    // Edge rubber-band: dragging outward past the first/last page follows
+    // with resistance, squashes page + avatar, then springs back.
+    val overdrag = remember { Animatable(0f) }
+    val pagerScope = rememberCoroutineScope()
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val bgBlur = if (android.os.Build.VERSION.SDK_INT >= 31 && (anySheet || accountSheet || lessonSel != null))
         Modifier.graphicsLayer {
@@ -216,7 +258,47 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         ) {
             // Swipe between tabs: the page tracks the finger and snaps when
             // it lands. Horizontal only - vertical scrolls stay scrolls.
-            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+            // At the first/last page an outward drag rubber-bands the whole
+            // page (system overscroll glow is off so only the squeeze shows).
+            CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
+            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()
+                .pointerInput(pagerState) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var over = 0f
+                        var touched = false
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val ch = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!ch.pressed) break
+                            val dx = ch.positionChange().x
+                            if (dx == 0f) continue
+                            val atStart = pagerState.currentPage == 0 && pagerState.currentPageOffsetFraction >= 0f
+                            val atEnd = pagerState.currentPage == navTabs.lastIndex && pagerState.currentPageOffsetFraction <= 0f
+                            val outward = (atStart && dx > 0f) || (atEnd && dx < 0f)
+                            val bleedBack = touched && ((over > 0f && dx < 0f) || (over < 0f && dx > 0f))
+                            if (outward || bleedBack) {
+                                over = (over + dx * 0.35f * (1f - abs(over) / 280f).coerceIn(0.15f, 1f)).coerceIn(-240f, 240f)
+                                touched = true
+                                val v = over
+                                pagerScope.launch { overdrag.snapTo(v) }
+                            }
+                        }
+                        pagerScope.launch {
+                            overdrag.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow))
+                        }
+                    }
+                }
+                .graphicsLayer {
+                    val o = overdrag.value
+                    if (o != 0f) {
+                        translationX = o
+                        val pull = abs(o) / 240f
+                        scaleX = 1f - pull * 0.08f
+                        scaleY = 1f + pull * 0.04f
+                        transformOrigin = TransformOrigin(if (o > 0f) 0f else 1f, 0.5f)
+                    }
+                }) { page ->
                 when (navTabs[page]) {
                     Tab.HOMEWORK -> HomeworkTab(ui, vm) { id, src ->
                         detailError = null
@@ -232,6 +314,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                     Tab.POINTS -> PointsTab(ui)
                     Tab.MORE -> MoreTab(ui, vm)
                 }
+            }
             }
         }
         }
@@ -265,7 +348,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                                 if (frac <= 0.5f) pagerState.scrollToPage(whole, frac)
                                 else pagerState.scrollToPage((whole + 1).coerceAtMost(last), frac - 1f)
                                 dragIndex = null
-                                pagerState.animateScrollToPage(target, animationSpec = tween(if (VisualTuning.systemReducedMotion) 0 else VisualTuning.animationMs.toInt(), easing = EaseInOut))
+                                pagerState.animateScrollToPage(target, animationSpec = if (VisualTuning.systemReducedMotion) tween(0) else spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMediumLow))
                             }
                             vm.selectTab(navTabs[target])
                         }
@@ -304,6 +387,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 .offset(x = itemW * (slideIdx + 0.5f) - lensWidth / 2, y = centerY - pillH / 2)
                 .width(lensWidth)
                 .height(pillH)
+                .then(pillStretch)
                 .shadow(10.dp, RoundedCornerShape(pillH / 2), clip = false, ambientColor = baseStain, spotColor = baseStain)
                 .then(pillDrift)
                 .liquidGlass(glassBackdrop, cornerRadius = pillH / 2, edgeWidth = 7.dp, refrStrength = 7.dp, baseAlpha = 0.42f, stainColor = baseStain, stain = stainAlpha)
@@ -320,6 +404,16 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             Modifier
                 .offset(x = itemW2 * 2.5f - 33.dp, y = navY2 + 16.dp - 33.dp)
                 .size(66.dp)
+                .graphicsLayer {
+                    val o = overdrag.value
+                    if (o != 0f) {
+                        translationX = o
+                        val pull = abs(o) / 240f
+                        scaleX = 1f - pull * 0.12f
+                        scaleY = 1f + pull * 0.06f
+                        transformOrigin = TransformOrigin(0.5f, 0.5f)
+                    }
+                }
         ) {
             ProfileNavButton(ui, vm, onTap = { vm.selectTab(Tab.PROFILE) }, onLong = { accountSheet = true }, onPlaced = { avatarCenterY = it })
         }
@@ -653,8 +747,8 @@ fun MoreTab(ui: UiState, vm: AppViewModel) {
     BackHandler(enabled = section != null) { section = null }
     when (section) {
         null -> {
+            val hasReportCard = remember { vm.hasCached("reportcard") }
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                val hasReportCard = remember { vm.hasCached("reportcard") }
                 val items = mutableListOf("Theme", "Attendance", "Notices", "Exams", "Calendar", "Clubs", "Forms", "Absences", "Detentions", "Moments", "Assessment")
                 if (hasReportCard) items += "Report Card"
                 if (ui.inbox != null || ui.outbox != null) items += "Messages"
