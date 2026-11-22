@@ -241,7 +241,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     val profFactor = (1f - kotlin.math.abs(slideIdx - 2f)).coerceIn(0f, 1f)
     val stainAlpha = 0.55f * (1f - profFactor)
     // Ring grows to wrap the 1.25x avatar (66 * 1.25 = 82.5dp) on PROFILE.
-    val pillH = 62.dp + 21.dp * profFactor
+    val pillH = 62.dp + 24.5.dp * profFactor
     val pillPad = 8.dp * (1f - profFactor) + 1.5.dp * profFactor
     val pillDrift = Modifier.graphicsLayer {
         // Parallax drift fades out as the pill becomes the avatar ring: the
@@ -426,7 +426,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     // so the raised profile avatar escapes the bar.
     Box(Modifier.align(Alignment.BottomCenter).then(nearDrift)
             .shadow(barElev, clip = false, ambientColor = softAmbient, spotColor = softSpot)
-            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 4.dp, refrStrength = 5.5.dp, blurRadius = 26.dp, baseAlpha = 0.6f, stainColor = ThemeStore.current.bar, stain = 0.5f, frosted = true)
+            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 4.dp, refrStrength = 5.5.dp, blurRadius = 26.dp, baseAlpha = 0.92f, stainColor = ThemeStore.current.bar, stain = 0.5f, frosted = true)
             .navigationBarsPadding()
             .onGloballyPositioned { navPos = it.positionInRoot(); navSize = it.size }) {
             CompositionLocalProvider(LocalRippleConfiguration provides null) {
@@ -484,7 +484,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         val itemCenterY = navY + 32.dp // items live in the fixed 64dp Row; navSize.height includes the gesture inset
         val profCenterY = avatarCenterY?.let { with(density) { it.toDp() } } ?: (itemCenterY - 16.dp)
         val centerY = itemCenterY + (profCenterY - itemCenterY) * profFactor
-        val profileMinWidth = 88.dp * profFactor
+        val profileMinWidth = 86.5.dp * profFactor
         val lensWidth = maxOf(itemW - pillPad * 2, profileMinWidth)
         Box(
             Modifier
@@ -494,7 +494,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 .then(pillStretch)
                 .shadow(10.dp, RoundedCornerShape(pillH / 2), clip = false, ambientColor = baseStain, spotColor = baseStain)
                 .then(pillDrift)
-                .liquidGlass(glassBackdrop, cornerRadius = pillH / 2, edgeWidth = 7.dp, refrStrength = 9.5.dp, baseAlpha = 0.42f, stainColor = baseStain, stain = stainAlpha)
+                .liquidGlass(glassBackdrop, cornerRadius = pillH / 2, edgeWidth = 5.dp, refrStrength = 6.dp, baseAlpha = 0.42f, stainColor = baseStain, stain = stainAlpha)
         )
     }
 
@@ -530,7 +530,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             .align(Alignment.TopCenter)
             .then(nearDrift)
             .shadow(barElev, clip = false, ambientColor = softAmbient, spotColor = softSpot)
-            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 5.dp, refrStrength = 7.dp, blurRadius = 4.dp, baseAlpha = 0.65f, stainColor = ThemeStore.current.bar, stain = 0.25f, frosted = true)
+            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 5.dp, refrStrength = 7.dp, blurRadius = 4.dp, baseAlpha = 0.92f, stainColor = ThemeStore.current.bar, stain = 0.25f, frosted = true)
             .statusBarsPadding(),
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         title = {
@@ -1160,9 +1160,12 @@ fun ProfileTab(ui: UiState, vm: AppViewModel) {
     }
     var viewer by remember { mutableStateOf(false) }
     if (viewer && avatar != null) {
-        androidx.compose.ui.window.Dialog(onDismissRequest = { viewer = false }) {
-            Box(Modifier.fillMaxSize().clickable { viewer = false }, contentAlignment = Alignment.Center) {
-                Image(bitmap = avatar, contentDescription = "Profile photo", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)))
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { viewer = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+        ) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.88f)).clickable { viewer = false }, contentAlignment = Alignment.Center) {
+                Image(bitmap = avatar, contentDescription = "Profile photo", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxWidth(0.94f).clip(RoundedCornerShape(16.dp)))
             }
         }
     }
