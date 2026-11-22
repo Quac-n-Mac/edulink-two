@@ -4,6 +4,10 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.EaseInOut
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.snap
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.math.roundToInt
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -135,7 +139,11 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
         Color(0xFF7A8AA0)  // More - slate
     )
     val selIdx = navTabs.indexOf(ui.tab).coerceAtLeast(0)
-    val slideIdx by animateFloatAsState(targetValue = selIdx.toFloat(), animationSpec = tween(450, easing = EaseInOut), label = "navSlide")
+    var dragIndex by remember { mutableStateOf<Float?>(null) }
+    val slideIdx by animateFloatAsState(
+        targetValue = dragIndex ?: selIdx.toFloat(),
+        animationSpec = if (dragIndex != null) snap() else tween(450, easing = EaseInOut),
+        label = "navSlide")
     val lo = kotlin.math.floor(slideIdx).toInt().coerceIn(0, navTabs.lastIndex)
     val hi = kotlin.math.ceil(slideIdx).toInt().coerceIn(0, navTabs.lastIndex)
     val baseStain = lerp(navStains[lo], navStains[hi], slideIdx - lo)
@@ -216,8 +224,27 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             }
         }
         }
-        NavigationBar(modifier = Modifier.then(nearDrift).shadow(barElev, ambientColor = softAmbient, spotColor = softSpot).onGloballyPositioned { navPos = it.positionInRoot(); navSize = it.size }) {
-            Row(Modifier.fillMaxWidth().height(80.dp)) {
+        // Do not use Material Surface here: its rectangular clip cuts off
+        // the raised profile avatar. This bar deliberately allows overflow.
+        Box(Modifier.then(nearDrift)
+            .shadow(barElev, ambientColor = softAmbient, spotColor = softSpot)
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .onGloballyPositioned { navPos = it.positionInRoot(); navSize = it.size }) {
+            Row(Modifier.fillMaxWidth().height(80.dp).pointerInput(navSize.width) {
+                val itemPx = navSize.width.toFloat() / navTabs.size
+                detectHorizontalDragGestures(
+                    onDragStart = { at -> dragIndex = (at.x / itemPx - 0.5f).coerceIn(0f, navTabs.lastIndex.toFloat()) },
+                    onHorizontalDrag = { change, amount ->
+                        change.consume()
+                        dragIndex = ((dragIndex ?: selIdx.toFloat()) + amount / itemPx).coerceIn(0f, navTabs.lastIndex.toFloat())
+                    },
+                    onDragEnd = {
+                        dragIndex?.let { vm.selectTab(navTabs[it.roundToInt().coerceIn(0, navTabs.lastIndex)]) }
+                        dragIndex = null
+                    },
+                    onDragCancel = { dragIndex = null }
+                )
+            }) {
                 GlassNavItem(ui.tab == Tab.HOMEWORK, { vm.selectTab(Tab.HOMEWORK) }, { Icon(Icons.Default.Home, null) }, "Homework", Modifier.weight(1f))
                 GlassNavItem(ui.tab == Tab.TIMETABLE, { vm.selectTab(Tab.TIMETABLE) }, { Icon(Icons.Default.DateRange, null) }, "Timetable", Modifier.weight(1f))
                 Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
