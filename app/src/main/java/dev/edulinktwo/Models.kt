@@ -107,7 +107,26 @@ data class BehaviourData(
 )
 
 @Serializable
-data class Account(val key: String, val username: String, val display_name: String, val school: String, val host: String)
+data class Account(
+    val key: String,
+    val username: String,
+    val display_name: String,
+    val school: String,
+    val host: String,
+    val school_id: Long = 0,
+    val school_code: String = ""
+)
+
+/** Result of the pre-login school resolution (School.FromCode + SchoolDetails). */
+@Serializable
+data class SchoolResolveResult(
+    val ok: Boolean = false,
+    val error: String? = null,
+    val host: String = "",
+    val school_id: Long = 0,
+    val name: String = "",
+    val logo_b64: String? = null
+)
 @Serializable
 data class AccountsResult(val ok: Boolean = false, val current: String? = null, val accounts: List<Account> = emptyList())
 
