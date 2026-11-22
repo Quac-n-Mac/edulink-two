@@ -48,9 +48,15 @@ pub enum Cmd {
     /// Log in and pre-cache every surface in parallel.
     Login {
         username: String,
-        /// API host, e.g. www9.edulinkone.com
+        /// School ID or postcode (resolved like the stock app).
+        #[arg(long)]
+        code: Option<String>,
+        /// API host, e.g. www9.edulinkone.com (skip --code resolution).
         #[arg(long)]
         host: Option<String>,
+        /// Establishment id when using --host directly.
+        #[arg(long)]
+        establishment: Option<i64>,
         /// Learner id for timetable/points (defaults to the login user id).
         #[arg(long)]
         learner_id: Option<String>,
@@ -633,7 +639,7 @@ pub async fn main() -> Result<()> {
             Cmd::Login { username: _, learner_id, .. } => {
                 let today = Local::now().format("%Y-%m-%d").to_string();
                 let (login, pre) = client
-                    .login("fixture-password", learner_id.as_deref().or(Some("424242")), &today)
+                    .login("fixture-password", 81, learner_id.as_deref().or(Some("424242")), &today)
                     .await?;
                 println!(
                     "mock login ok: {} (token established), prefetch {}ms",
@@ -657,6 +663,8 @@ pub async fn main() -> Result<()> {
                     learner_id: "424242".into(),
                     display_name: "Fixture User".into(),
                     school: "Mock School".into(),
+                    school_code: "MOCK 1CK".into(),
+                    school_id: 81,
                     saved_at: Utc::now(),
                 };
                 let _ = &state_dir;
@@ -666,8 +674,19 @@ pub async fn main() -> Result<()> {
     }
 
     match &args.cmd {
-        Cmd::Login { username, host, learner_id } => {
-            let host = host.clone().unwrap_or_else(|| DEFAULT_HOST.into());
+        Cmd::Login { username, code, host, establishment, learner_id } => {
+            // Resolve the school exactly like the stock app: code/postcode
+            // -> host + establishment id. Explicit --host/--establishment
+            // skips the lookup.
+            let (host, school_id) = if let Some(code) = code {
+                let info = crate::client::resolve_school(code).await?;
+                println!("{} (id {})", info.host, info.school_id);
+                (info.host, info.school_id)
+            } else {
+                let h = host.clone().unwrap_or_else(|| DEFAULT_HOST.into());
+                let id = establishment.context("need --code (school ID or postcode) or --host + --establishment")?;
+                (h, id)
+            };
             let transport = HttpTransport::new(&host)?;
             if args.poor {
                 transport.set_degraded(true);
@@ -677,7 +696,7 @@ pub async fn main() -> Result<()> {
             let today = Local::now().format("%Y-%m-%d").to_string();
             let t = Instant::now();
             let (login, pre) = client
-                .login(&password, learner_id.as_deref(), &today)
+                .login(&password, school_id, learner_id.as_deref(), &today)
                 .await
                 .context("login failed")?;
             let school = login
@@ -695,6 +714,8 @@ pub async fn main() -> Result<()> {
                     .unwrap_or_else(|| login.user.id.to_string()),
                 display_name: login.user.display(),
                 school: school.clone(),
+                school_code: code.clone().unwrap_or_default(),
+                school_id,
                 saved_at: Utc::now(),
             };
             let mut store = AccountStore::load(&config_dir)?;
