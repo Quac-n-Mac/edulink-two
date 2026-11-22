@@ -222,7 +222,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     // deliberate swipes are never yanked back.
     var tapTarget by remember { mutableStateOf<Tab?>(null) }
     LaunchedEffect(Unit) {
-        pagerState.interactionSource.interactions.collect { if (it is androidx.compose.foundation.gestures.DragInteraction.Start) tapTarget = null }
+        pagerState.interactionSource.interactions.collect { if (it is androidx.compose.foundation.interaction.DragInteraction.Start) tapTarget = null }
     }
     LaunchedEffect(pagerState.isScrollInProgress) {
         if (!pagerState.isScrollInProgress && dragIndex == null) {
@@ -650,6 +650,7 @@ private fun SheetGrabHandle() {
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun ProfileNavButton(ui: UiState, vm: AppViewModel, onTap: () -> Unit, onLong: () -> Unit, onPlaced: (Float) -> Unit = {}) {
     val avatar = remember(ui.currentAccount) {
         vm.avatarFile(ui.currentAccount)?.let { BitmapFactory.decodeFile(it.absolutePath)?.asImageBitmap() }
