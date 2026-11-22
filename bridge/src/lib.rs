@@ -182,7 +182,7 @@ async fn do_hw_detail(state_dir: PathBuf, cache_dir: PathBuf, id: String) -> Res
         }
     }
     let client = client_for(&session)?;
-    match client.homework_details(&id, "homework").await {
+    match client.homework_details(&id, "EduLink").await {
         Ok(d) => {
             cache.write(&name, &d).await?;
             std::fs::read_to_string(cache_file(&cache, &name)).context("read back detail")

@@ -456,7 +456,7 @@ async fn run_with<T: Transport + 'static>(args: &Args, client: Client<T>, sessio
                 None => bail!("usage: edulink hw+ <id>  (ids shown by `edulink hw --json`)"),
             };
             let name = format!("hwdetail-{id}");
-            let (d, src) = surface(&cache, &name, TTL_HW_DETAIL, args.refresh, args.offline, || client.homework_details(&id, "homework")).await?;
+            let (d, src) = surface(&cache, &name, TTL_HW_DETAIL, args.refresh, args.offline, || client.homework_details(&id, "EduLink")).await?;
             if args.json {
                 return print_json(&d.data);
             }
