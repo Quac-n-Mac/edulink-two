@@ -643,7 +643,7 @@ pub async fn main() -> Result<()> {
                     .await?;
                 println!(
                     "mock login ok: {} (token established), prefetch {}ms",
-                    login.user.display(),
+                    login.user.as_ref().map(|u| u.display()).unwrap_or_default(),
                     pre.total_ms
                 );
                 return Ok(());
@@ -704,15 +704,16 @@ pub async fn main() -> Result<()> {
                 .as_ref()
                 .and_then(|e| e.name.clone())
                 .unwrap_or_default();
+            let user = login.user.clone().context("no user identity")?;
             let session = Session {
                 host: host.clone(),
                 authtoken: login.authtoken.clone(),
                 username: username.clone(),
-                user_id: login.user.id.to_string(),
+                user_id: user.id.to_string(),
                 learner_id: learner_id
                     .clone()
-                    .unwrap_or_else(|| login.user.id.to_string()),
-                display_name: login.user.display(),
+                    .unwrap_or_else(|| user.id.to_string()),
+                display_name: user.display(),
                 school: school.clone(),
                 school_code: code.clone().unwrap_or_default(),
                 school_id,
