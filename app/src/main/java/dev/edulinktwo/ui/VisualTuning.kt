@@ -10,6 +10,8 @@ import androidx.compose.ui.unit.dp
 
 /** All values are live state. Changes persist locally on this device. */
 object VisualTuning {
+    var systemReducedMotion by mutableStateOf(false)
+    val motionStrength: Float get() = if (systemReducedMotion) 0f else parallax
     var parallax by mutableFloatStateOf(1f)
     var animationMs by mutableFloatStateOf(450f)
     var refraction by mutableFloatStateOf(1f)
@@ -44,6 +46,7 @@ object VisualTuning {
 fun CustomisationSection() {
     val context = LocalContext.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (VisualTuning.systemReducedMotion) Text("System animations are disabled. Parallax and navigation animation are reduced automatically.")
         Text("Changes apply now and are saved on this device. Screenshot these values when you have your favourite setup.")
         TuningSlider("Parallax", VisualTuning.parallax, 0f..3f, "%.2fx".format(VisualTuning.parallax)) { VisualTuning.parallax = it }
         TuningSlider("Animation duration", VisualTuning.animationMs, 100f..1500f, "%.0f ms".format(VisualTuning.animationMs)) { VisualTuning.animationMs = it }

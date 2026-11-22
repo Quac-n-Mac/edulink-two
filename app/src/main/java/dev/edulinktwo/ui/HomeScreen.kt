@@ -104,21 +104,21 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     // on long scrolls and exposed the navy root (his "growing blue bar").
     val drift = Modifier.graphicsLayer {
         scaleX = 1.1f; scaleY = 1.1f
-        rotationZ = (tilt.x * 0.4f) * VisualTuning.parallax
-        translationY = (-scrollPx.coerceIn(-220f, 220f) * 0.18f + tilt.y * 4.dp.toPx()) * VisualTuning.parallax
-        translationX = (tilt.x * 6.dp.toPx()) * VisualTuning.parallax
+        rotationZ = (tilt.x * 0.4f) * VisualTuning.motionStrength
+        translationY = (-scrollPx.coerceIn(-220f, 220f) * 0.18f + tilt.y * 4.dp.toPx()) * VisualTuning.motionStrength
+        translationX = (tilt.x * 6.dp.toPx()) * VisualTuning.motionStrength
     }
     val contentDrift = Modifier.graphicsLayer {
-        translationY = (-tilt.y * 6.dp.toPx()) * VisualTuning.parallax
-        translationX = (-tilt.x * 10.dp.toPx()) * VisualTuning.parallax
+        translationY = (-tilt.y * 6.dp.toPx()) * VisualTuning.motionStrength
+        translationX = (-tilt.x * 10.dp.toPx()) * VisualTuning.motionStrength
     }
     // Sheets no longer drift: they are glass panels sampling the static
     // backdrop beneath them, and a translated lens over an untranslated
     // sample reads as a sampling bug. (This supersedes his earlier
     // negative-parallax-on-sheets ask - the glass IS the depth now.)
     val nearDrift = Modifier.graphicsLayer {
-        translationY = (-tilt.y * 1.5f.dp.toPx()) * VisualTuning.parallax
-        translationX = (-tilt.x * 2.dp.toPx()) * VisualTuning.parallax
+        translationY = (-tilt.y * 1.5f.dp.toPx()) * VisualTuning.motionStrength
+        translationX = (-tilt.x * 2.dp.toPx()) * VisualTuning.motionStrength
     }
 
     // Liquid glass backdrop: the WHOLE screen (bars included) is
@@ -142,7 +142,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     var dragIndex by remember { mutableStateOf<Float?>(null) }
     val slideIdx by animateFloatAsState(
         targetValue = dragIndex ?: selIdx.toFloat(),
-        animationSpec = if (dragIndex != null) snap() else tween(VisualTuning.animationMs.toInt(), easing = EaseInOut),
+        animationSpec = if (dragIndex != null) snap() else tween(if (VisualTuning.systemReducedMotion) 0 else VisualTuning.animationMs.toInt(), easing = EaseInOut),
         label = "navSlide")
     val lo = kotlin.math.floor(slideIdx).toInt().coerceIn(0, navTabs.lastIndex)
     val hi = kotlin.math.ceil(slideIdx).toInt().coerceIn(0, navTabs.lastIndex)
@@ -152,8 +152,8 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     val pillH = 58.dp + 14.dp * profFactor
     val pillPad = 10.dp * (1f - profFactor) + 1.5.dp * profFactor
     val pillDrift = Modifier.graphicsLayer {
-        translationY = (-tilt.y * 2.dp.toPx()) * VisualTuning.parallax
-        translationX = (-tilt.x * 3.dp.toPx()) * VisualTuning.parallax
+        translationY = (-tilt.y * 2.dp.toPx()) * VisualTuning.motionStrength
+        translationX = (-tilt.x * 3.dp.toPx()) * VisualTuning.motionStrength
     }
     var navPos by remember { mutableStateOf(Offset.Zero) }
     var navSize by remember { mutableStateOf(IntSize(1, 1)) }
@@ -288,7 +288,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             .align(Alignment.TopCenter)
             .then(nearDrift)
             .shadow(barElev, ambientColor = softAmbient, spotColor = softSpot)
-            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 5.dp, refrStrength = 5.dp, baseAlpha = 0.45f),
+            .liquidGlass(glassBackdrop, cornerRadius = 0.dp, edgeWidth = 5.dp, refrStrength = 5.dp, blurRadius = 4.dp, baseAlpha = 0.65f),
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         title = {
             Column {
@@ -311,7 +311,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             onDismissRequest = { detail = null; detailLoading = false; detailError = null },
             containerColor = Color.Transparent
         ) {
-            Column(Modifier.clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, baseAlpha = 0.62f).padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
+            Column(Modifier.clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f).padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
                 when {
                     detailLoading -> Text("Loading...", style = MaterialTheme.typography.bodyMedium)
                     detail == null -> Text(detailError ?: "could not load homework", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
@@ -358,13 +358,13 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
 
     lessonSel?.let { lesson ->
         ModalBottomSheet(onDismissRequest = { lessonSel = null }, containerColor = Color.Transparent) {
-            Column(Modifier.clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, baseAlpha = 0.62f)) { LessonSheet(ui, vm, lesson) }
+            Column(Modifier.clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f)) { LessonSheet(ui, vm, lesson) }
         }
     }
 
     if (accountSheet) {
         ModalBottomSheet(onDismissRequest = { accountSheet = false }, containerColor = Color.Transparent) {
-            Column(Modifier.clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, baseAlpha = 0.62f).padding(bottom = 32.dp)) {
+            Column(Modifier.clip(RoundedCornerShape(28.dp)).liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 8.dp, refrStrength = 8.dp, blurRadius = 8.dp, baseAlpha = 0.82f).padding(bottom = 32.dp)) {
                 Text("Profiles", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
                 ui.accounts.forEach { a ->
                     ListItem(

@@ -15,6 +15,10 @@ import dev.edulinktwo.ui.HomeScreen
 import dev.edulinktwo.ui.LoginScreen
 
 class MainActivity : ComponentActivity() {
+    override fun onResume() {
+        super.onResume()
+        VisualTuning.systemReducedMotion = !android.animation.ValueAnimator.areAnimatorsEnabled()
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         VisualTuning.load(this)

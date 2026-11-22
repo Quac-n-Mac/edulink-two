@@ -55,6 +55,7 @@ uniform float glassScale;    // backdrop px per root px
 uniform float cornerRadius;
 uniform float edgeWidth;     // rim band width, px
 uniform float refrStrength;  // refraction offset at rim, px
+uniform float blurRadius;
 uniform float dispersion;    // chromatic spread factor
 uniform float2 lightDir;     // normalized, toward the light
 uniform float baseAlpha;
@@ -87,7 +88,7 @@ half4 main(float2 fragCoord) {
     half bC = backdrop.eval(base + off * (1.0 - dispersion)).b;
 
     // slight blur on the green/base sample: 4-tap cross, tiny radius
-    float2 t = float2(1.4);
+    float2 t = float2(blurRadius);
     float2 g0 = base + off;
     half4 gSum = backdrop.eval(g0 + float2(t.x, 0.0)) + backdrop.eval(g0 - float2(t.x, 0.0))
                + backdrop.eval(g0 + float2(0.0, t.y)) + backdrop.eval(g0 - float2(0.0, t.y));
@@ -173,6 +174,7 @@ fun Modifier.liquidGlass(
     cornerRadius: Dp = 24.dp,
     edgeWidth: Dp = 10.dp,
     refrStrength: Dp = 9.dp,
+    blurRadius: Dp = 1.4.dp,
     baseAlpha: Float = 0.55f,
     stainColor: Color = Color.Transparent,
     stain: Float = 0f,
@@ -218,6 +220,7 @@ fun Modifier.liquidGlass(
             shader.setFloatUniform("edgeWidth", edgeWidth.toPx())
             shader.setFloatUniform("refrStrength", refrStrength.toPx() * VisualTuning.refraction)
             shader.setFloatUniform("dispersion", 0.45f)
+            shader.setFloatUniform("blurRadius", blurRadius.toPx())
             val ld = lightDir()
             shader.setFloatUniform("lightDir", ld.x, ld.y)
             shader.setFloatUniform("baseAlpha", (baseAlpha * VisualTuning.glassAlpha).coerceIn(0f, 1f))
