@@ -217,16 +217,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val poor = down in 1..1499
                 val offline = !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
                         !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                val cur = _ui.value
+                if (cur.degraded == poor && cur.offline == offline) return // no churn during scrolling
                 RustBridge.nativeSetDegraded(poor)
-                _ui.value = _ui.value.copy(degraded = poor, offline = offline)
-                if (!offline && _ui.value.offline) refresh() // back online: refresh once
+                _ui.value = cur.copy(degraded = poor, offline = offline)
+                if (!offline && cur.offline) refresh() // back online: refresh once
             }
             override fun onLost(network: Network) {
                 RustBridge.nativeSetDegraded(true)
                 _ui.value = _ui.value.copy(offline = true)
             }
             override fun onAvailable(network: Network) {
-                _ui.value = _ui.value.copy(offline = false)
+                if (_ui.value.offline) _ui.value = _ui.value.copy(offline = false)
             }
         })
     }
