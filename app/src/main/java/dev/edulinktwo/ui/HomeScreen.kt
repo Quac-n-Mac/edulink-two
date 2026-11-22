@@ -301,10 +301,15 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     LaunchedEffect(Unit) {
         snapshotFlow { pagerState.isScrollInProgress }.collect { if (!it) glassBackdrop.captureVersion++ }
     }
+    // Live glass: recapture continuously, capped ~30fps so the GPU keeps
+    // headroom for the UI itself. The capture serializes via
+    // captureInFlight, so the bar tracks real content at the fastest
+    // sustainable rate instead of stale ~1Hz updates.
     LaunchedEffect(Unit) {
-        snapshotFlow { scrollPx }.collectLatest {
-            delay(160)
+        while (true) {
+            withFrameNanos { }
             glassBackdrop.captureVersion++
+            delay(33)
         }
     }
 
@@ -320,7 +325,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     // No RenderEffect background blur behind sheets: the effect's own
     // offscreen pass produced magenta/green pixel garbage on his GPU, and
     // the sheet glass frosts its own region anyway (scrim still dims).
-    Column(Modifier.fillMaxSize().nestedScroll(scrollProbe).glassBackdrop(glassBackdrop, glassLayer, glassScope, 0.5f)) {
+    Column(Modifier.fillMaxSize().nestedScroll(scrollProbe).glassBackdrop(glassBackdrop, glassLayer, glassScope, 1.0f)) {
         Box(Modifier.fillMaxSize()) {
         // Layer 1 (deep): barely-there gradient + faint doodle texture.
         Box(

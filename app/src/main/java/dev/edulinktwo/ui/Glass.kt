@@ -192,8 +192,8 @@ fun Modifier.glassBackdrop(
                     // Bake the blur into real pixels: downscale hard, then
                     // upscale bilinearly. Smooth under ANY filter mode - the
                     // BitmapShader ctor that controls filtering is API 34+.
-                    val fw = (safe.width / 9).coerceAtLeast(1)
-                    val fh = (safe.height / 9).coerceAtLeast(1)
+                    val fw = (safe.width / 4).coerceAtLeast(1)
+                    val fh = (safe.height / 4).coerceAtLeast(1)
                     val small = android.graphics.Bitmap.createScaledBitmap(safe, fw, fh, true)
                     backdrop.frost = android.graphics.Bitmap.createScaledBitmap(small, safe.width, safe.height, true).asImageBitmap()
                     backdrop.frostScale = scale
