@@ -71,6 +71,44 @@ import dev.edulinktwo.*
 import dev.edulinktwo.R
 import java.time.LocalDate
 
+/** Top-bar homework status at a glance, his blueprint:
+ * triangle = unfinished upcoming homework exists (RED when one is due
+ * tomorrow or sooner); second icon = red cross + undone count, green tick
+ * when everything is complete, gray minus when there is no homework.
+ * Tapping either jumps to the Homework tab. */
+@Composable
+private fun HomeworkStatusIcons(ui: UiState, onOpen: () -> Unit) {
+    val hw = ui.homework
+    val current = hw?.homework?.current ?: emptyList()
+    val today = LocalDate.now().toEpochDay()
+    val undone = current.filter { !it.completed }
+    val urgent = undone.any { h ->
+        runCatching { LocalDate.parse(h.due_date.take(10)).toEpochDay() }.getOrNull()?.let { it <= today + 1 } == true
+    }
+    Row(
+        Modifier.clickable(onClick = onOpen).padding(horizontal = 4.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (undone.isNotEmpty()) {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = if (urgent) "Homework due tomorrow or sooner" else "Unfinished homework",
+                tint = if (urgent) Color(0xFFE53935) else Color(0xFFF9A825),
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+        }
+        when {
+            current.isEmpty() -> Icon(Icons.Default.Remove, "No homework", tint = Color(0xFF9AA3B2), modifier = Modifier.size(20.dp))
+            undone.isEmpty() -> Icon(Icons.Default.Check, "All homework complete", tint = Color(0xFF43A047), modifier = Modifier.size(22.dp))
+            else -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Close, "Undone homework", tint = Color(0xFFE53935), modifier = Modifier.size(20.dp))
+                Text("${undone.size}", fontWeight = FontWeight.Bold, color = Color(0xFFE53935), style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+}
+
 /** Wraps the view config with a multiplied touch slop: used INSIDE pager
  * pages so the vertical list needs more travel to claim a drag, letting
  * slightly-angled horizontal swipes page instead of scroll. */
@@ -488,6 +526,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
             }
         },
         actions = {
+            HomeworkStatusIcons(ui) { vm.selectTab(Tab.HOMEWORK) }
             IconButton(onClick = { vm.refresh() }) { Icon(Icons.Default.Refresh, "Refresh") }
         }
     )
