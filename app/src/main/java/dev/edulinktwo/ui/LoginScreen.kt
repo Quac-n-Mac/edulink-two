@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -59,18 +60,30 @@ fun LoginScreen(ui: UiState, vm: AppViewModel) {
     val glassBackdrop = remember { GlassBackdrop() }
     val glassLayer = rememberGraphicsLayer()
     val glassScope = rememberCoroutineScope()
+    val tilt by rememberTilt()
+    val glassLight: () -> androidx.compose.ui.geometry.Offset = {
+        val x = -0.55f + tilt.x * 0.8f
+        val y = -0.83f + tilt.y * 0.5f
+        val len = kotlin.math.hypot(x, y)
+        androidx.compose.ui.geometry.Offset(x / len, y / len)
+    }
 
     Box(modifier = Modifier.fillMaxSize().glassBackdrop(glassBackdrop, glassLayer, glassScope)) {
         // 1:1 background: gradient + the original doodle overlay.
+        val parallax = Modifier.fillMaxSize().graphicsLayer {
+            // deep layer: counter-translate slightly against tilt, oversized to hide edges
+            scaleX = 1.06f; scaleY = 1.06f
+            translationX = -tilt.x * 10.dp.toPx()
+            translationY = -tilt.y * 7.dp.toPx()
+        }
         Box(
-            modifier = Modifier
-                .fillMaxSize()
+            modifier = parallax
                 .background(Brush.verticalGradient(listOf(GradTop, GradBottom)))
         )
         Image(
             painter = painterResource(R.drawable.login_bg),
             contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
+            modifier = parallax,
             contentScale = ContentScale.Crop
         )
 
@@ -83,6 +96,7 @@ fun LoginScreen(ui: UiState, vm: AppViewModel) {
             LoginStep.CODE -> SchoolCodeStep(
                 hasAccounts = ui.accounts.isNotEmpty(),
                 backdrop = glassBackdrop,
+                lightDir = glassLight,
                 onBack = { step = LoginStep.PICKER },
                 onResolved = { code, result ->
                     schoolCode = code
@@ -95,6 +109,7 @@ fun LoginScreen(ui: UiState, vm: AppViewModel) {
                 school = school!!,
                 schoolCode = schoolCode,
                 backdrop = glassBackdrop,
+                lightDir = glassLight,
                 onBack = { step = LoginStep.CODE },
                 vm = vm
             )
@@ -153,9 +168,9 @@ private fun PillButton(text: String, enabled: Boolean, busy: Boolean = false, on
 }
 
 @Composable
-private fun DemoButton(onClick: () -> Unit, backdrop: GlassBackdrop? = null) {
+private fun DemoButton(onClick: () -> Unit, backdrop: GlassBackdrop? = null, lightDir: () -> androidx.compose.ui.geometry.Offset = { androidx.compose.ui.geometry.Offset(-0.55f, -0.83f) }) {
     val glassMod = if (backdrop != null) {
-        Modifier.liquidGlass(backdrop, cornerRadius = 30.dp, edgeWidth = 10.dp, refrStrength = 9.dp, baseAlpha = 0.4f)
+        Modifier.liquidGlass(backdrop, cornerRadius = 30.dp, edgeWidth = 10.dp, refrStrength = 9.dp, baseAlpha = 0.4f, lightDir = lightDir)
     } else {
         Modifier
             .clip(RoundedCornerShape(30.dp))
@@ -195,6 +210,7 @@ private fun loginFieldColors() = TextFieldDefaults.colors(
 private fun SchoolCodeStep(
     hasAccounts: Boolean,
     backdrop: GlassBackdrop? = null,
+    lightDir: () -> androidx.compose.ui.geometry.Offset = { androidx.compose.ui.geometry.Offset(-0.55f, -0.83f) },
     onBack: () -> Unit,
     onResolved: (String, SchoolResolveResult) -> Unit,
     vm: AppViewModel
@@ -254,7 +270,7 @@ private fun SchoolCodeStep(
                 }
             )
             Spacer(Modifier.height(16.dp))
-            DemoButton(onClick = { }, backdrop = backdrop)
+            DemoButton(onClick = { }, backdrop = backdrop, lightDir = lightDir)
         }
     }
 }
@@ -264,6 +280,7 @@ private fun CredentialsStep(
     school: SchoolResolveResult,
     schoolCode: String,
     backdrop: GlassBackdrop? = null,
+    lightDir: () -> androidx.compose.ui.geometry.Offset = { androidx.compose.ui.geometry.Offset(-0.55f, -0.83f) },
     onBack: () -> Unit,
     vm: AppViewModel
 ) {
@@ -384,7 +401,7 @@ private fun CredentialsStep(
                 }
             )
             Spacer(Modifier.height(16.dp))
-            DemoButton(onClick = { }, backdrop = backdrop)
+            DemoButton(onClick = { }, backdrop = backdrop, lightDir = lightDir)
         }
     }
 }

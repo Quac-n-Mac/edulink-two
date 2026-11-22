@@ -48,6 +48,13 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
     // Liquid glass plumbing: the content below the floating bars is the
     // backdrop texture the lens shader refracts.
     val glassBackdrop = remember { GlassBackdrop() }
+    val tilt by rememberTilt()
+    val glassLight: () -> androidx.compose.ui.geometry.Offset = {
+        val x = -0.55f + tilt.x * 0.8f
+        val y = -0.83f + tilt.y * 0.5f
+        val len = kotlin.math.hypot(x, y)
+        androidx.compose.ui.geometry.Offset(x / len, y / len)
+    }
     val glassLayer = rememberGraphicsLayer()
     val glassScope = rememberCoroutineScope()
     LaunchedEffect(ui.tab, ui.lastUpdated) { glassBackdrop.captureVersion++ }
@@ -118,7 +125,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 .navigationBarsPadding()
                 .padding(horizontal = 14.dp, vertical = 10.dp)
                 .fillMaxWidth()
-                .liquidGlass(glassBackdrop, cornerRadius = 30.dp, edgeWidth = 12.dp, refrStrength = 12.dp, baseAlpha = 0.5f)
+                .liquidGlass(glassBackdrop, cornerRadius = 30.dp, edgeWidth = 12.dp, refrStrength = 12.dp, baseAlpha = 0.5f, lightDir = glassLight)
                 .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -142,7 +149,7 @@ fun HomeScreen(ui: UiState, vm: AppViewModel) {
                 Modifier
                     .padding(horizontal = 12.dp)
                     .padding(bottom = 20.dp)
-                    .liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 14.dp, refrStrength = 14.dp, baseAlpha = 0.62f, useWindowPos = true)
+                    .liquidGlass(glassBackdrop, cornerRadius = 28.dp, edgeWidth = 14.dp, refrStrength = 14.dp, baseAlpha = 0.62f, lightDir = glassLight, useWindowPos = true)
             ) {
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
                 when {

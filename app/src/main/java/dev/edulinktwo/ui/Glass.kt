@@ -149,47 +149,6 @@ fun Modifier.glassBackdrop(
     drawContent()
 }
 
-private class GlassShaderBrush(
-    private val backdrop: ImageBitmap,
-    private val backdropScale: Float,
-    private val surfacePosInRoot: Offset,
-    private val scrollOffsetPx: Float,
-    private val cornerRadiusPx: Float,
-    private val edgeWidthPx: Float,
-    private val refrStrengthPx: Float,
-    private val baseAlpha: Float,
-) : ShaderBrush() {
-    override fun createShader(size: Size): Shader {
-        val shader = RuntimeShader(GLASS_AGSL)
-        shader.setInputBuffer(
-            "backdrop",
-            android.graphics.BitmapShader(
-                backdrop.asAndroidBitmap(), Shader.TileMode.CLAMP, Shader.TileMode.CLAMP
-            )
-        )
-        shader.setFloatUniform("resolution", size.width, size.height)
-        shader.setFloatUniform(
-            "surfacePos",
-            surfacePosInRoot.x,
-            surfacePosInRoot.y - scrollOffsetPx
-        )
-        shader.setFloatUniform("glassScale", backdropScale)
-        shader.setFloatUniform("cornerRadius", cornerRadiusPx)
-        shader.setFloatUniform("edgeWidth", edgeWidthPx)
-        shader.setFloatUniform("refrStrength", refrStrengthPx)
-        shader.setFloatUniform("dispersion", 0.45f)
-        shader.setFloatUniform("lightDir", -0.55f, -0.83f)
-        shader.setFloatUniform("baseAlpha", baseAlpha)
-        shader.setFloatUniform("tintLighten", 0.07f)
-        return shader
-    }
-}
-
-/**
- * Make this surface liquid glass over [backdrop]. [scrollOffsetPx] shifts
- * the sampling origin so the refraction tracks content moving underneath
- * between captures.
- */
 fun Modifier.liquidGlass(
     backdrop: GlassBackdrop,
     cornerRadius: Dp = 24.dp,
@@ -197,6 +156,7 @@ fun Modifier.liquidGlass(
     refrStrength: Dp = 9.dp,
     baseAlpha: Float = 0.55f,
     scrollOffsetPx: () -> Float = { 0f },
+    lightDir: () -> Offset = { Offset(-0.55f, -0.83f) },
     fallbackColor: Color = Color(0x59FFFFFF),
     useWindowPos: Boolean = false,
 ): Modifier {
@@ -215,20 +175,31 @@ fun Modifier.liquidGlass(
         }
     }
     var pos by mutableStateOf(Offset.Zero)
+    val shader = RuntimeShader(GLASS_AGSL)
+    val brush = object : ShaderBrush() {
+        override fun createShader(size: Size): Shader = shader
+    }
     return this
         .onGloballyPositioned { pos = if (useWindowPos) it.positionInWindow() else it.positionInRoot() }
         .drawBehind {
             val bmp = backdrop.bitmap ?: return@drawBehind
-            val brush = GlassShaderBrush(
-                backdrop = bmp,
-                backdropScale = backdrop.scale,
-                surfacePosInRoot = pos,
-                scrollOffsetPx = scrollOffsetPx(),
-                cornerRadiusPx = cornerRadius.toPx(),
-                edgeWidthPx = edgeWidth.toPx(),
-                refrStrengthPx = refrStrength.toPx(),
-                baseAlpha = baseAlpha,
+            shader.setInputBuffer(
+                "backdrop",
+                android.graphics.BitmapShader(
+                    bmp.asAndroidBitmap(), Shader.TileMode.CLAMP, Shader.TileMode.CLAMP
+                )
             )
+            shader.setFloatUniform("resolution", size.width, size.height)
+            shader.setFloatUniform("surfacePos", pos.x, pos.y - scrollOffsetPx())
+            shader.setFloatUniform("glassScale", backdrop.scale)
+            shader.setFloatUniform("cornerRadius", cornerRadius.toPx())
+            shader.setFloatUniform("edgeWidth", edgeWidth.toPx())
+            shader.setFloatUniform("refrStrength", refrStrength.toPx())
+            shader.setFloatUniform("dispersion", 0.45f)
+            val ld = lightDir()
+            shader.setFloatUniform("lightDir", ld.x, ld.y)
+            shader.setFloatUniform("baseAlpha", baseAlpha)
+            shader.setFloatUniform("tintLighten", 0.07f)
             val rr = RoundRect(0f, 0f, size.width, size.height, CornerRadius(cornerRadius.toPx()))
             val path = Path().apply { addRoundRect(rr) }
             clipPath(path) { drawRect(brush) }
