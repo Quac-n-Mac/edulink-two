@@ -62,17 +62,18 @@ async fn do_login(state_dir: PathBuf, cache_dir: PathBuf, host: String, school_c
         .as_ref()
         .and_then(|e| e.name.clone())
         .unwrap_or_default();
+    let user = login.user.clone().context("no user identity")?;
     let session = Session {
         host,
         authtoken: login.authtoken.clone(),
         username: username.clone(),
-        user_id: login.user.id.to_string(),
+        user_id: user.id.to_string(),
         learner_id: if learner_id.is_empty() {
-            login.user.id.to_string()
+            user.id.to_string()
         } else {
             learner_id
         },
-        display_name: login.user.display(),
+        display_name: user.display(),
         school,
         school_code,
         school_id,
