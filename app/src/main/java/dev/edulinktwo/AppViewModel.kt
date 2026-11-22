@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
 
-enum class Tab { HOMEWORK, TIMETABLE, MESSAGES, POINTS, MORE }
+enum class Tab { HOMEWORK, TIMETABLE, POINTS, MORE, PROFILE }
 
 data class UiState(
     val loggedIn: Boolean = false,
@@ -120,6 +120,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Saved profile photo for an account key, if we have one. */
+    fun avatarFile(key: String?): java.io.File? {
+        if (key.isNullOrEmpty()) return null
+        val f = java.io.File(stateDir, "avatar-$key.jpg")
+        return if (f.exists()) f else null
+    }
+
     /** Saved crest for a school id, if we have one. */
     fun crestFile(schoolId: Long): java.io.File? {
         if (schoolId <= 0) return null
@@ -134,6 +141,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }.getOrElse { "{\"ok\":false,\"error\":\"bridge failed\"}" }
             val res = runCatching { json.decodeFromString<ApiResult>(raw) }.getOrNull()
             if (res?.ok == true) {
+                res.avatar_b64?.let { b64 ->
+                    runCatching {
+                        val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+                        java.io.File(stateDir, "avatar-${res.key}.jpg").writeBytes(bytes)
+                    }
+                }
                 reloadAccounts()
                 loadCachedAll()
                 _ui.value = _ui.value.copy(showLogin = false)
@@ -151,9 +164,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val raw = runCatching { RustBridge.nativeRefresh(stateDir, cacheDir) }.getOrNull()
             val res = raw?.let { runCatching { json.decodeFromString<ApiResult>(it) }.getOrNull() }
             loadCachedAll()
+            val failedList = res?.failed?.takeIf { it.isNotEmpty() }
             _ui.value = _ui.value.copy(
                 refreshing = false,
-                error = if (res?.ok == false) res.error else null
+                error = when {
+                    res?.ok == false -> res.error
+                    failedList != null -> "Some surfaces failed: " + failedList.joinToString("; ")
+                    else -> null
+                }
             )
         }
     }
