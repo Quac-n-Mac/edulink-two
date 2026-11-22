@@ -3,6 +3,7 @@
 //! Field names match the wire format exactly.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::fmt;
 
 /// An id on the wire is sometimes a string, sometimes a number.
@@ -71,6 +72,8 @@ impl Setter {
 pub struct UserInfo {
     pub id: Id,
     #[serde(default)]
+    pub avatar: Option<Avatar>,
+    #[serde(default)]
     pub forename: String,
     #[serde(default)]
     pub surname: String,
@@ -79,6 +82,12 @@ pub struct UserInfo {
     #[serde(default, rename = "type")]
     pub kind: Option<serde_json::Value>,
 }
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Avatar {
+    #[serde(default)]
+    pub photo: Option<String>,
+}
+
 impl UserInfo {
     pub fn display(&self) -> String {
         format!("{} {}", self.forename, self.surname).trim().to_string()
@@ -342,6 +351,16 @@ pub struct Recorded {
     pub date: Option<String>,
 }
 
+/// Live Edulink serializes numbers as strings half the time. Accept both.
+fn de_i64_flex<'de, D: serde::Deserializer<'de>>(d: D) -> Result<i64, D::Error> {
+    let v = Value::deserialize(d)?;
+    Ok(match v {
+        Value::Number(n) => n.as_i64().unwrap_or(0),
+        Value::String(s) => s.trim().parse().unwrap_or(0),
+        _ => 0,
+    })
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AchievementEvent {
     #[serde(default)]
@@ -352,7 +371,7 @@ pub struct AchievementEvent {
     pub date: String,
     #[serde(default)]
     pub comments: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_i64_flex")]
     pub points: i64,
     #[serde(default)]
     pub recorded: Option<Recorded>,
@@ -376,7 +395,7 @@ pub struct BehaviourEvent {
     pub date: String,
     #[serde(default)]
     pub comments: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_i64_flex")]
     pub points: i64,
     #[serde(default)]
     pub lesson_information: Option<String>,
