@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":"1","result":{"success":true,"method":"EduLink.Login","authtoken":"fixture-token-00000000-0000-4000-8000-000000000000","user":{"id":"424242","forename":"Test","surname":"Student","username":"tstudent42"},"children":[],"establishment":{"id":81,"name":"Example Comprehensive School"}}}
