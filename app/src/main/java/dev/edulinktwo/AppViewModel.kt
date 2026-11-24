@@ -55,6 +55,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val stateDir = app.filesDir.absolutePath
     private val cacheDir = app.cacheDir.absolutePath
 
+    // Remembered sign-ins: Android Keystore-sealed, app-private. Passwords
+    // are never logged and never written anywhere unencrypted.
+    private val credentialStore = KeystoreBox.store(app)
+
     private val _ui = MutableStateFlow(UiState())
     val ui = _ui.asStateFlow()
 
@@ -163,13 +167,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return if (f.exists()) f else null
     }
 
-    fun login(host: String, schoolCode: String, schoolId: Long, username: String, password: String, learnerId: String, onDone: (Boolean, String?) -> Unit) {
+    /** Remembered sign-in for one account key, if the user chose "remember me". */
+    fun savedCredential(key: String?, onDone: (SavedCredential?) -> Unit) {
+        if (key.isNullOrEmpty()) { onDone(null); return }
+        viewModelScope.launch(Dispatchers.IO) {
+            val cred = runCatching { credentialStore.get(key) }.getOrNull()
+            withContext(Dispatchers.Main) { onDone(cred) }
+        }
+    }
+
+    fun login(host: String, schoolCode: String, schoolId: Long, username: String, password: String, learnerId: String, remember: Boolean, onDone: (Boolean, String?) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             val raw = runCatching {
                 RustBridge.nativeLogin(stateDir, cacheDir, host, schoolCode, schoolId.toString(), username, password, learnerId)
             }.getOrElse { "{\"ok\":false,\"error\":\"bridge failed\"}" }
             val res = runCatching { json.decodeFromString<ApiResult>(raw) }.getOrNull()
             if (res?.ok == true) {
+                // Only after a real server success: remember or forget.
+                res.key?.let { k ->
+                    runCatching {
+                        if (remember) credentialStore.save(k, username, password)
+                        else credentialStore.remove(k)
+                    }
+                }
                 res.avatar_b64?.let { b64 ->
                     runCatching {
                         val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
@@ -235,6 +255,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun removeAccount(key: String) {
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { RustBridge.nativeRemoveAccount(stateDir, key) }
+            runCatching { credentialStore.remove(key) } // forget remembered sign-in too
             reloadAccounts()
             _ui.value = _ui.value.copy(homework = null, timetable = null, achievement = null, behaviour = null)
             loadCachedAll()

@@ -56,10 +56,13 @@ fun LoginScreen(ui: UiState, vm: AppViewModel) {
     val expiredAccount = ui.accounts.firstOrNull { it.key == ui.currentAccount }
     var school by remember { mutableStateOf<SchoolResolveResult?>(null) }
     var schoolCode by remember { mutableStateOf("") }
+    // Remembered sign-in for the account being re-authenticated, if any.
+    var prefill by remember { mutableStateOf<dev.edulinktwo.SavedCredential?>(null) }
     LaunchedEffect(ui.sessionExpired, expiredAccount) {
         if (ui.sessionExpired && expiredAccount != null && expiredAccount.school_id > 0) {
             school = SchoolResolveResult(ok = true, host = expiredAccount.host, school_id = expiredAccount.school_id, name = expiredAccount.school)
             schoolCode = expiredAccount.school_code
+            vm.savedCredential(expiredAccount.key) { prefill = it }
             step = LoginStep.CREDENTIALS
         }
     }
@@ -116,6 +119,7 @@ fun LoginScreen(ui: UiState, vm: AppViewModel) {
             LoginStep.CREDENTIALS -> CredentialsStep(
                 school = school!!,
                 schoolCode = schoolCode,
+                prefill = prefill,
                 onBack = { step = LoginStep.CODE },
                 vm = vm
             )
@@ -286,6 +290,7 @@ private fun SchoolCodeStep(
 private fun CredentialsStep(
     school: SchoolResolveResult,
     schoolCode: String,
+    prefill: dev.edulinktwo.SavedCredential? = null,
     backdrop: GlassBackdrop? = null,
     lightDir: () -> androidx.compose.ui.geometry.Offset = { androidx.compose.ui.geometry.Offset(-0.55f, -0.83f) },
     onBack: () -> Unit,
@@ -293,9 +298,17 @@ private fun CredentialsStep(
 ) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var rememberMe by remember { mutableStateOf(false) }
+    // Stock parity: remember-me is on by default; remembered sign-ins prefill.
+    var rememberMe by remember { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(prefill) {
+        if (prefill != null) {
+            username = prefill.username
+            password = prefill.password
+            rememberMe = true
+        }
+    }
     val crest = remember(school.school_id) {
         vm.crestFile(school.school_id)?.let { BitmapFactory.decodeFile(it.absolutePath)?.asImageBitmap() }
     }
@@ -401,7 +414,7 @@ private fun CredentialsStep(
                 onClick = {
                     busy = true
                     error = null
-                    vm.login(school.host, schoolCode, school.school_id, username, password, "") { ok, err ->
+                    vm.login(school.host, schoolCode, school.school_id, username, password, "", rememberMe) { ok, err ->
                         busy = false
                         if (!ok) error = err
                     }
