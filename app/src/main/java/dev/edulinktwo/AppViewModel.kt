@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.time.Instant
 
@@ -58,6 +59,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // Remembered sign-ins: Android Keystore-sealed, app-private. Passwords
     // are never logged and never written anywhere unencrypted.
     private val credentialStore = KeystoreBox.store(app)
+
+    private val autoRelogin = AutoReloginPolicy()
 
     private val _ui = MutableStateFlow(UiState())
     val ui = _ui.asStateFlow()
@@ -176,6 +179,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Silent sign-in with the remembered credentials for the current account.
+     * Returns true only on a real server success. Never throws. */
+    private suspend fun silentRelogin(): Boolean {
+        val acc = _ui.value.accounts.firstOrNull { it.key == _ui.value.currentAccount } ?: return false
+        if (acc.school_id <= 0) return false
+        val cred = runCatching { credentialStore.get(acc.key) }.getOrNull() ?: return false
+        if (!autoRelogin.allow(System.currentTimeMillis())) return false
+        val raw = runCatching {
+            RustBridge.nativeLogin(stateDir, cacheDir, acc.host, acc.school_code, acc.school_id.toString(), cred.username, cred.password, "")
+        }.getOrElse { "{\"ok\":false,\"error\":\"bridge failed\"}" }
+        val res = runCatching { json.decodeFromString<ApiResult>(raw) }.getOrNull()
+        if (res?.ok == true) {
+            reloadAccounts()
+            return true
+        }
+        autoRelogin.failed(res?.error)
+        return false
+    }
+
     fun login(host: String, schoolCode: String, schoolId: Long, username: String, password: String, learnerId: String, remember: Boolean, onDone: (Boolean, String?) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             val raw = runCatching {
@@ -183,6 +205,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }.getOrElse { "{\"ok\":false,\"error\":\"bridge failed\"}" }
             val res = runCatching { json.decodeFromString<ApiResult>(raw) }.getOrNull()
             if (res?.ok == true) {
+                autoRelogin.reset()
                 // Only after a real server success: remember or forget.
                 res.key?.let { k ->
                     runCatching {
@@ -220,8 +243,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (_ui.value.refreshing) return // coalesce refresh requests
         _ui.value = _ui.value.copy(refreshing = true, error = null)
         viewModelScope.launch(Dispatchers.IO) {
-            val raw = runCatching { RustBridge.nativeRefresh(stateDir, cacheDir) }.getOrNull()
-            val res = raw?.let { runCatching { json.decodeFromString<ApiResult>(it) }.getOrNull() }
+            var raw = runCatching { RustBridge.nativeRefresh(stateDir, cacheDir) }.getOrNull()
+            var res = raw?.let { runCatching { json.decodeFromString<ApiResult>(it) }.getOrNull() }
+            if (sessionNeedsSignIn(res?.failed.orEmpty() + listOfNotNull(res?.error)) && silentRelogin()) {
+                // Remembered sign-in worked: retry once, no login screen.
+                raw = runCatching { RustBridge.nativeRefresh(stateDir, cacheDir) }.getOrNull()
+                res = raw?.let { runCatching { json.decodeFromString<ApiResult>(it) }.getOrNull() }
+            }
             loadCachedAll()
             val failedList = res?.failed.orEmpty()
             val expired = sessionNeedsSignIn(failedList + listOfNotNull(res?.error))
@@ -358,6 +386,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun recoverExpiredSession(message: String?) {
         if (message != null && sessionNeedsSignIn(listOf(message))) {
+            // Try the remembered sign-in first; the next open/refresh then works.
+            // If it can't be used, fall through to the login screen as before.
+            val ok = runBlocking(Dispatchers.IO) { silentRelogin() }
+            if (ok) { _ui.value = _ui.value.copy(error = "Session refreshed automatically. Pull to refresh or retry."); return }
             _ui.value = _ui.value.copy(sessionExpired = true, showLogin = true,
                 error = "Your school session expired. Sign in again. Your saved data is kept.")
         }
