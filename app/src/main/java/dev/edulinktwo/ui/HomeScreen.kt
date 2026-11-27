@@ -780,25 +780,28 @@ fun TimetableTab(ui: UiState, onLessonTap: (Lesson) -> Unit = {}) {
         return
     }
     val today = LocalDate.now().toString()
+    val days = upcomingByDate(tb.weeks.flatMap { it.days }, today) { it.date }
+    if (days.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No upcoming days cached. Pull to refresh.") }
+        return
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        tb.weeks.forEach { week ->
-            week.days.forEach { day ->
-                val orderedLessons = day.orderedLessons()
-                item {
-                    Text(
-                        "${day.name ?: ""} (${day.date})" + if (day.date == today) " - today" else "",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = if (day.date == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                items(orderedLessons.size, key = { day.date + "-lesson-" + it }) { idx -> val l = orderedLessons[idx]
-                    Card(Modifier.fillMaxWidth().clickable { onLessonTap(l) }) {
-                        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("${l.start_time ?: ""}\n${l.end_time ?: ""}", style = MaterialTheme.typography.labelSmall)
-                            Column {
-                                Text(l.subjectName(), fontWeight = FontWeight.SemiBold)
-                                Text("${l.room?.name ?: ""}  ${l.teacherName()}", style = MaterialTheme.typography.bodySmall)
-                            }
+        days.forEach { day ->
+            val orderedLessons = day.orderedLessons()
+            item {
+                Text(
+                    "${day.name ?: ""} (${day.date})" + if (day.date == today) " - today" else "",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (day.date == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                )
+            }
+            items(orderedLessons.size, key = { day.date + "-lesson-" + it }) { idx -> val l = orderedLessons[idx]
+                Card(Modifier.fillMaxWidth().clickable { onLessonTap(l) }) {
+                    Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("${l.start_time ?: ""}\n${l.end_time ?: ""}", style = MaterialTheme.typography.labelSmall)
+                        Column {
+                            Text(l.subjectName(), fontWeight = FontWeight.SemiBold)
+                            Text("${l.room?.name ?: ""}  ${l.teacherName()}", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
